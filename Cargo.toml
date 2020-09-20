@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-chrono = "0.4.15"                    # Date and time library for Rust
-ansi_term = "0.12.1"              # Library for ANSI terminal colours and styles (bold, underline)
-serde_yaml = "0.8.13"              # YAML support for Serde
-serde = "1.0.116"                              # A generic serialization/deserialization framework
+chrono = { version = "0.4", features = ["serde"] }  # Date and time library for Rust
+ansi_term = "0.12"                                  # Library for ANSI terminal colours and styles (bold, underline)
+serde_yaml = "0.8"                                  # YAML support for Serde
+serde = { version = "1.0", features = ["derive"] }  # A generic serialization/deserialization framework

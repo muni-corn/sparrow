@@ -1,8 +1,11 @@
 use ansi_term::{Color, Style};
-use chrono::{prelude::*, Duration};
+use chrono::prelude::*;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io::{self, stdin, stdout, Write};
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::{Path, PathBuf};
 
 const DATE_FORMAT: &str = "%Y/%m/%d";
 const TIME_FORMAT: &str = "%H:%M";
@@ -14,17 +17,22 @@ fn main() {
         error: Color::Red.bold(),
     };
 
-    let task = Task::prompt_new(&formatting).unwrap();
+    let path = std::env::home_dir().unwrap().join(".sparrow");
 
-    dbg!(&task);
+    let mut data = Data::from_file(&path).unwrap();
+    let task = Task::prompt_new(&formatting).unwrap();
+    data.add_task(task);
+
+    data.write_to_file(&path).unwrap();
 }
 
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CalendarEvent {
     pub name: String,
     pub start_time: chrono::DateTime<chrono::Local>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Task {
     pub name: String,
     pub due_date: chrono::DateTime<chrono::Local>,
@@ -36,7 +44,7 @@ impl Task {
         let name = {
             let mut s = String::new();
             print!(
-                "{} ",
+                "{}  ",
                 formatting
                     .prompt
                     .paint("What do you want to name this task?")
@@ -89,7 +97,7 @@ impl Task {
         let date_str = {
             let mut s = String::new();
             print!(
-                "{} ({}) ",
+                "{} ({})  ",
                 formatting.prompt.paint("What day is this task due?"),
                 formatting.prompt_format.paint(DATE_FORMAT)
             );
@@ -118,7 +126,7 @@ impl Task {
             let time_str = {
                 let mut s = String::new();
                 print!(
-                    "{} ({}) ",
+                    "{} ({})  ",
                     formatting
                         .prompt
                         .paint(format!("What time on {} is this task due?", date_str)),
@@ -149,7 +157,7 @@ impl Task {
         .unwrap_or(Decision::No)
         {
             Decision::Yes => Ok(TaskDuration::Subtasks(Self::prompt_subtasks(formatting))),
-            Decision::No => Ok(TaskDuration::TimeDuration(prompt_time_duration(
+            Decision::No => Ok(TaskDuration::Minutes(prompt_time_duration(
                 task_name, formatting,
             )?)),
         }
@@ -160,7 +168,7 @@ impl Task {
 
         loop {
             print!(
-                "{} ",
+                "{}  ",
                 formatting.prompt.paint(&format!("#{}:", v.len() + 1))
             );
             match Subtask::prompt_new(formatting) {
@@ -172,7 +180,7 @@ impl Task {
                     }
                 }
                 Err(e) => print!(
-                    "{} ",
+                    "{}  ",
                     formatting
                         .error
                         .paint(&format!("There was an error: {}\nTry again?", e))
@@ -182,16 +190,16 @@ impl Task {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub enum TaskDuration {
-    TimeDuration(Duration),
+    Minutes(u64),
     Subtasks(Vec<Subtask>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Subtask {
     pub name: String,
-    pub duration: Duration,
+    pub duration: u64,
 }
 
 impl Subtask {
@@ -199,10 +207,10 @@ impl Subtask {
         let name = {
             let mut s = String::new();
             print!(
-                "{} ",
+                "{}  ",
                 formatting
                     .prompt
-                    .paint("What do you want to name this subtask?")
+                    .paint("What do you want to name this subtask?"),
             );
             stdout().flush()?;
             stdin().read_line(&mut s)?;
@@ -225,8 +233,9 @@ impl Subtask {
 pub enum SparrowError {
     InputCanceled,
     BasicMessage(String),
-    ChronoParse(chrono::ParseError),
     Io(io::Error),
+    ChronoParse(chrono::ParseError),
+    YamlError(serde_yaml::Error),
 }
 
 impl Display for SparrowError {
@@ -234,8 +243,9 @@ impl Display for SparrowError {
         match self {
             Self::InputCanceled => write!(f, "input canceled"),
             Self::BasicMessage(b) => write!(f, "sparrow hit an error: {}", b),
-            Self::ChronoParse(e) => write!(f, "{}", e),
             Self::Io(i) => write!(f, "there was an i/o error: {}", i),
+            Self::ChronoParse(e) => e.fmt(f),
+            Self::YamlError(y) => y.fmt(f),
         }
     }
 }
@@ -251,6 +261,12 @@ impl From<chrono::ParseError> for SparrowError {
 impl From<io::Error> for SparrowError {
     fn from(e: io::Error) -> Self {
         Self::Io(e)
+    }
+}
+
+impl From<serde_yaml::Error> for SparrowError {
+    fn from(e: serde_yaml::Error) -> Self {
+        Self::YamlError(e)
     }
 }
 
@@ -287,7 +303,7 @@ fn prompt_yn(prompt_string: &str) -> Result<Option<Decision>, SparrowError> {
     loop {
         let mut s = String::new();
 
-        print!("{} ", prompt_string);
+        print!("{}  ", prompt_string);
         stdout().flush()?;
         stdin().read_line(&mut s)?;
         s = s.trim().to_string();
@@ -301,7 +317,7 @@ fn prompt_yn(prompt_string: &str) -> Result<Option<Decision>, SparrowError> {
         } else if s.starts_with('n') {
             break Ok(Some(Decision::No));
         } else {
-            print!("(What?) ");
+            print!("(What?)  ");
         }
     }
 }
@@ -309,9 +325,9 @@ fn prompt_yn(prompt_string: &str) -> Result<Option<Decision>, SparrowError> {
 fn prompt_time_duration(
     task_name: &str,
     formatting: &Formatting,
-) -> Result<Duration, SparrowError> {
+) -> Result<u64, SparrowError> {
     print!(
-        "{} ({}) ",
+        "{} ({})  ",
         formatting
             .prompt
             .paint(format!("How long will \"{}\" take to complete?", task_name)),
@@ -324,14 +340,36 @@ fn prompt_time_duration(
         stdin().read_line(&mut s)?;
         s = s.trim().to_string();
 
-        match s.parse::<f32>() {
-            Ok(n) => break Ok(Duration::minutes(n as i64)),
+        match s.parse::<f64>() {
+            Ok(n) => break Ok(n as u64),
             Err(_) => print!(
                 "{}",
                 formatting
                     .error
-                    .paint("That doesn't seem like a number. Try again? ")
+                    .paint("That doesn't seem like a number. Try again?  ")
             ),
         }
+    }
+}
+
+#[derive(Default, Deserialize, Serialize)]
+struct Data {
+    tasks: Vec<Task>
+}
+
+impl Data {
+    fn from_file(path: &Path) -> Result<Self, SparrowError> {
+        if !path.exists() {
+            Ok(Self::default())
+        } else {
+            Ok(serde_yaml::from_reader(fs::File::open(path)?)?)
+        }
+    }
+    fn add_task(&mut self, task: Task) {
+        self.tasks.push(task);
+    }
+
+    fn write_to_file(&self, path: &Path) -> Result<(), SparrowError> {
+        Ok(fs::write(path, serde_yaml::to_string(self)?)?)
     }
 }

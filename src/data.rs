@@ -5,11 +5,11 @@ use crate::SparrowError;
 use crate::Task;
 
 #[derive(Default, Deserialize, Serialize)]
-pub struct Data {
+pub struct UserData {
     tasks: Vec<Task>
 }
 
-impl Data {
+impl UserData {
     pub fn from_file(path: &Path) -> Result<Self, SparrowError> {
         if !path.exists() {
             Ok(Self::default())

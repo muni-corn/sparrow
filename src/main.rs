@@ -17,7 +17,7 @@ fn main() {
         error: Color::Red.bold(),
     };
 
-    let path = std::env::home_dir().unwrap().join(".sparrow");
+    let path = dirs::home_dir().unwrap().join(".sparrow");
 
     let mut data = Data::from_file(&path).unwrap();
     let task = Task::prompt_new(&formatting).unwrap();

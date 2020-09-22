@@ -6,7 +6,7 @@ pub mod data;
 pub mod task;
 pub mod errors;
 
-use data::Data;
+use data::UserData;
 pub use errors::SparrowError;
 pub use task::Task;
 
@@ -17,13 +17,13 @@ fn main() {
         error: Color::Red.bold(),
     };
 
-    let path = dirs::home_dir().unwrap().join(".sparrow");
+    let task_list_path = dirs::home_dir().unwrap().join(".sparrow");
 
-    let mut data = Data::from_file(&path).unwrap();
+    let mut data = UserData::from_file(&task_list_path).unwrap();
     let task = Task::prompt_new(&formatting).unwrap();
     data.add_task(task);
 
-    data.write_to_file(&path).unwrap();
+    data.write_to_file(&task_list_path).unwrap();
 }
 
 #[derive(Debug, Deserialize, Serialize)]

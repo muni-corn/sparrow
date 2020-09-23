@@ -1,8 +1,8 @@
-use chrono::prelude::*;
-use std::io::{stdin, stdout, Write};
-use serde::{Deserialize, Serialize};
-use crate::{Formatting, prompt_yn, Decision};
 use crate::errors::SparrowError;
+use crate::{prompt_yn, Decision, Formatting};
+use chrono::prelude::*;
+use serde::{Deserialize, Serialize};
+use std::io::{stdin, stdout, Write};
 
 const DATE_FORMAT: &str = "%Y/%m/%d";
 const TIME_FORMAT: &str = "%H:%M";
@@ -43,9 +43,14 @@ impl Task {
             let time_str = if let Some(t) = time_str_opt {
                 t
             } else {
-                chrono::NaiveTime::from_hms(0, 0, 0).format(TIME_FORMAT).to_string()
+                chrono::NaiveTime::from_hms(0, 0, 0)
+                    .format(TIME_FORMAT)
+                    .to_string()
             };
-            let (combined_str, combined_format) = (format!("{} {}", date_str.trim(), time_str.trim()), format!("{} {}", DATE_FORMAT, TIME_FORMAT));
+            let (combined_str, combined_format) = (
+                format!("{} {}", date_str.trim(), time_str.trim()),
+                format!("{} {}", DATE_FORMAT, TIME_FORMAT),
+            );
 
             let naive_due_date =
                 chrono::NaiveDateTime::parse_from_str(&combined_str, &combined_format)?;
@@ -204,10 +209,7 @@ impl Subtask {
     }
 }
 
-fn prompt_time_duration(
-    task_name: &str,
-    formatting: &Formatting,
-) -> Result<u64, SparrowError> {
+fn prompt_time_duration(task_name: &str, formatting: &Formatting) -> Result<u64, SparrowError> {
     print!(
         "{} ({})  ",
         formatting
@@ -233,4 +235,3 @@ fn prompt_time_duration(
         }
     }
 }
-

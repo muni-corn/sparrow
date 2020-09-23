@@ -42,4 +42,3 @@ impl From<serde_yaml::Error> for SparrowError {
         Self::YamlError(e)
     }
 }
-

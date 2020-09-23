@@ -1,13 +1,17 @@
 use ansi_term::{Color, Style};
-use std::io::{stdin, stdout, Write};
+use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::io::{stdin, stdout, Write};
 
 pub mod data;
-pub mod task;
 pub mod errors;
+pub mod task;
+pub mod calendar_event;
 
-use data::UserData;
+pub use data::UserData;
 pub use errors::SparrowError;
+pub use calendar_event::CalendarEvent;
 pub use task::Task;
 
 fn main() {
@@ -24,12 +28,6 @@ fn main() {
     data.add_task(task);
 
     data.write_to_file(&task_list_path).unwrap();
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct CalendarEvent {
-    pub name: String,
-    pub start_time: chrono::DateTime<chrono::Local>,
 }
 
 pub struct Formatting {
@@ -84,3 +82,21 @@ fn prompt_yn(prompt_string: &str) -> Result<Option<Decision>, SparrowError> {
     }
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Occupancy {
+    span: TimeSpan,
+    repeat: Repeat,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TimeSpan {
+    start: DateTime<Local>,
+    minutes: u64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub enum Repeat {
+    No,
+    Daily,
+    Weekly(HashSet<chrono::Weekday>),
+}

@@ -1,12 +1,12 @@
+use crate::SparrowError;
+use crate::Task;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
-use crate::SparrowError;
-use crate::Task;
 
 #[derive(Default, Deserialize, Serialize)]
 pub struct UserData {
-    tasks: Vec<Task>
+    tasks: Vec<Task>,
 }
 
 impl UserData {

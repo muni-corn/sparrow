@@ -4,31 +4,17 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::io::{stdin, stdout, Write};
 
+pub mod calendar_event;
 pub mod data;
 pub mod errors;
+pub mod schedule;
 pub mod task;
-pub mod calendar_event;
 
+pub use calendar_event::CalendarEvent;
 pub use data::UserData;
 pub use errors::SparrowError;
-pub use calendar_event::CalendarEvent;
+pub use schedule::Schedule;
 pub use task::Task;
-
-fn main() {
-    let formatting = Formatting {
-        prompt: Style::new().bold(),
-        prompt_format: Style::new().bold().italic(),
-        error: Color::Red.bold(),
-    };
-
-    let task_list_path = dirs::home_dir().unwrap().join(".sparrow");
-
-    let mut data = UserData::from_file(&task_list_path).unwrap();
-    let task = Task::prompt_new(&formatting).unwrap();
-    data.add_task(task);
-
-    data.write_to_file(&task_list_path).unwrap();
-}
 
 pub struct Formatting {
     prompt: Style,
@@ -82,21 +68,22 @@ fn prompt_yn(prompt_string: &str) -> Result<Option<Decision>, SparrowError> {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Occupancy {
-    span: TimeSpan,
-    repeat: Repeat,
-}
-
+/// A single block of time. Multiple, repeated blocks of time are covered by `Occupancy`.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TimeSpan {
     start: DateTime<Local>,
-    minutes: u64,
+    minutes: u32,
 }
 
+/// How to repeat a span of time.
 #[derive(Debug, Deserialize, Serialize)]
 pub enum Repeat {
+    /// The span of time only occurs once.
     No,
+
+    /// The span of time repeats daily at the same time every day.
     Daily,
+
+    /// The span of time repeats weekly on the specificed weekdays.
     Weekly(HashSet<chrono::Weekday>),
 }

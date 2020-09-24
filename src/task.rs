@@ -12,6 +12,7 @@ pub struct Task {
     pub name: String,
     pub due_date: chrono::DateTime<chrono::Local>,
     pub duration: TaskDuration,
+    pub done: bool,
 }
 
 impl Task {
@@ -70,6 +71,7 @@ impl Task {
             name,
             due_date,
             duration,
+            done: false,
         })
     }
 

@@ -1,4 +1,4 @@
-use ansi_term::{Color, Style};
+use ansi_term::Style;
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -10,7 +10,7 @@ pub mod errors;
 pub mod schedule;
 pub mod task;
 
-pub use calendar_event::CalendarEvent;
+pub use calendar_event::*;
 pub use data::UserData;
 pub use errors::SparrowError;
 pub use schedule::Schedule;
@@ -73,6 +73,16 @@ fn prompt_yn(prompt_string: &str) -> Result<Option<Decision>, SparrowError> {
 pub struct TimeSpan {
     start: DateTime<Local>,
     minutes: u32,
+}
+
+impl TimeSpan {
+    fn beginning(&self) -> &DateTime<Local> {
+        &self.start
+    }
+
+    fn end(&self) -> DateTime<Local> {
+        self.start + chrono::Duration::minutes(self.minutes as i64)
+    }
 }
 
 /// How to repeat a span of time.

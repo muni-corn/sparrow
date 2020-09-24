@@ -9,10 +9,21 @@ const TIME_FORMAT: &str = "%H:%M";
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Task {
+    /// The name of the task.
     pub name: String,
+
+    /// When the task is due.
     pub due_date: chrono::DateTime<chrono::Local>,
+
+    /// The user's estimation on how long the Task will take.
     pub duration: TaskDuration,
+
+    /// True if the task is complete.
     pub done: bool,
+
+    /// How many days in advance of the Task's due date this Task should be considered for
+    /// scheduling.
+    pub consideration_period_days: u32,
 }
 
 impl Task {

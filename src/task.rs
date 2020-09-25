@@ -83,6 +83,7 @@ impl Task {
             due_date,
             duration,
             done: false,
+            consideration_period_days: 3,
         })
     }
 

@@ -11,7 +11,7 @@ pub mod schedule;
 pub mod task;
 
 pub use calendar_event::*;
-pub use data::UserData;
+pub use data::*;
 pub use errors::SparrowError;
 pub use schedule::Schedule;
 pub use task::Task;
@@ -69,7 +69,7 @@ fn prompt_yn(prompt_string: &str) -> Result<Option<Decision>, SparrowError> {
 }
 
 /// A single block of time. Multiple, repeated blocks of time are covered by `Occupancy`.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 pub struct TimeSpan {
     start: DateTime<Local>,
     minutes: u32,
@@ -81,7 +81,24 @@ impl TimeSpan {
     }
 
     fn end(&self) -> DateTime<Local> {
-        self.start + chrono::Duration::minutes(self.minutes as i64)
+        self.start + self.minutes_as_duration()
+    }
+
+    fn minutes_as_duration(&self) -> chrono::Duration {
+        chrono::Duration::minutes(self.minutes as i64)
+    }
+
+    fn overlaps(&self, other: &TimeSpan) -> bool {
+        let self_end = self.end();
+        let other_end = other.end();
+        let total_duration = self.minutes_as_duration() + other.minutes_as_duration();
+        if other_end > self.start {
+            other_end - self.start < total_duration
+        } else if self_end > other.start {
+            self_end - other.start < total_duration
+        } else {
+            true
+        }
     }
 }
 

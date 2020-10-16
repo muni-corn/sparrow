@@ -1,13 +1,13 @@
 use ansi_term::Style;
 use std::io::{stdin, stdout, Write};
 
-pub mod calendar_event;
+pub mod spans;
 pub mod data;
 pub mod errors;
 pub mod schedule;
 pub mod task;
 
-pub use calendar_event::*;
+pub use spans::*;
 pub use data::*;
 pub use errors::SparrowError;
 pub use schedule::Schedule;

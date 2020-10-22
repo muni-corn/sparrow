@@ -3,11 +3,12 @@ use crate::{prompt_yn, Decision, Formatting};
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::io::{stdin, stdout, Write};
+use crate::prompts::*;
 
 const DATE_FORMAT: &str = "%Y/%m/%d";
 const TIME_FORMAT: &str = "%H:%M";
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Task {
     /// The name of the task.
     pub name: String,
@@ -184,13 +185,13 @@ impl Task {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum TaskDuration {
     Minutes(u64),
     Subtasks(Vec<Subtask>),
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Subtask {
     pub name: String,
     pub duration: u64,
@@ -224,28 +225,10 @@ impl Subtask {
 }
 
 fn prompt_time_duration(task_name: &str, formatting: &Formatting) -> Result<u64, SparrowError> {
-    print!(
-        "{} ({})  ",
-        formatting
-            .prompt
-            .paint(format!("How long will \"{}\" take to complete?", task_name)),
-        formatting.prompt_format.paint("minutes")
-    );
-
-    loop {
-        let mut s = String::new();
-        stdout().flush()?;
-        stdin().read_line(&mut s)?;
-        s = s.trim().to_string();
-
-        match s.parse::<f64>() {
-            Ok(n) => break Ok(n as u64),
-            Err(_) => print!(
-                "{}",
-                formatting
-                    .error
-                    .paint("That doesn't seem like a number. Try again?  ")
-            ),
+    prompt_strict(&formatting, &format!("How long will \"{}\" take to complete?", task_name), Some("minutes"), |i| {
+        match i.parse::<f64>() {
+            Ok(n) => Ok(n as u64),
+            Err(_) => Err(SparrowError::BasicMessage(String::from("That doesn't seem like a number"))),
         }
-    }
+    })
 }

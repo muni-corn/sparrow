@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 #[derive(Debug, Deserialize, Serialize)]
-pub(crate) struct CalendarEvent {
+pub struct CalendarEvent {
     pub name: String,
     pub time_span: TimeSpan,
     pub event_type: CalendarEventType,
@@ -33,7 +33,7 @@ impl IntoIterator for CalendarEvent {
 }
 
 /// Produces `ScheduleEntry`s from repeated `CalendarEvent`s
-pub(crate) struct CalendarScheduleEntryIter {
+pub struct CalendarScheduleEntryIter {
     calendar_event: CalendarEvent,
     next: Option<ScheduleEntry>,
 }
@@ -80,10 +80,7 @@ pub struct TimeSpan {
 
 impl TimeSpan {
     pub fn new(start: DateTime<Local>, minutes: u32) -> Self {
-        Self {
-            start,
-            minutes
-        }
+        Self { start, minutes }
     }
 
     pub fn beginning(&self) -> &DateTime<Local> {

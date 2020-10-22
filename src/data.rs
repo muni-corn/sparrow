@@ -1,6 +1,5 @@
-use crate::Schedule;
-use crate::SparrowError;
 use crate::Task;
+use crate::{CalendarEvent, Schedule, SparrowError};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -43,12 +42,13 @@ impl Default for Config {
 pub struct UserData {
     config: Config,
     tasks: Vec<Task>,
+    events: Vec<CalendarEvent>,
     schedule: Schedule,
 }
 
 impl UserData {
-    pub fn from_file(path: &Path) -> Result<Self, SparrowError> {
-        if !path.exists() {
+    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, SparrowError> {
+        if !path.as_ref().exists() {
             Ok(Self::default())
         } else {
             Ok(serde_yaml::from_reader(fs::File::open(path)?)?)
@@ -59,7 +59,27 @@ impl UserData {
         self.tasks.push(task);
     }
 
-    pub fn write_to_file(&self, path: &Path) -> Result<(), SparrowError> {
+    pub fn write_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), SparrowError> {
         Ok(fs::write(path, serde_yaml::to_string(self)?)?)
+    }
+
+    pub fn get_config(&self) -> &Config {
+        &self.config
+    }
+
+    pub fn get_tasks(&self) -> &[Task] {
+        &self.tasks
+    }
+
+    pub fn get_events(&self) -> &[CalendarEvent] {
+        &self.events
+    }
+
+    pub fn get_schedule(&mut self) -> &Schedule {
+        &self.schedule
+    }
+
+    pub fn set_schedule(&mut self, schedule: Schedule) {
+        self.schedule = schedule;
     }
 }

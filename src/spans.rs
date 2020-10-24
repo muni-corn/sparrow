@@ -1,7 +1,6 @@
 use crate::schedule::ScheduleEntry;
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CalendarEvent {
@@ -42,23 +41,28 @@ impl Iterator for CalendarScheduleEntryIter {
     type Item = ScheduleEntry;
 
     fn next(&mut self) -> Option<Self::Item> {
+        // do not mutate. this is what is returned at the end of the function. self.next is
+        // modified here to determine what entry there will be (if any) after this one.j
         let result = self.next.clone();
 
-        self.next = if let Some(current) = &self.next {
-            match &self.calendar_event.repeat {
-                Repeat::No => None,
-                Repeat::Daily => todo!(),
-                Repeat::Weekly(day_set) => {
-                    if day_set.is_empty() {
-                        None
-                    } else {
-                        let next_day = current.span();
-                        todo!()
-                    }
-                }
-            }
+        self.next = if let Some(current_entry) = &self.next {
+            let current_date = current_entry.span().beginning().date();
+            let current_time = current_entry.span().beginning().time();
+            let duration = current_entry.span().minutes();
+            let new_span = match &self.calendar_event.repeat {
+                Repeat::No => return None,
+                Repeat::Daily => TimeSpan::new(current_date.succ().and_time(current_time).unwrap(), duration),
+                Repeat::Weekly => TimeSpan::new((current_date + chrono::Duration::days(7)).and_time(current_time).unwrap(), duration)
+            };
+
+            Some(match current_entry {
+                ScheduleEntry::Job { title, .. } => ScheduleEntry::Job { title: title.clone(), span: new_span },
+                ScheduleEntry::Calendar { name, .. } => ScheduleEntry::Calendar { name: name.clone(), span: new_span },
+                ScheduleEntry::Break(_) => ScheduleEntry::Break(new_span),
+                ScheduleEntry::Sleep(_) => ScheduleEntry::Sleep(new_span),
+            })
         } else {
-            None
+            return None
         };
 
         result
@@ -157,6 +161,6 @@ pub enum Repeat {
     /// The span of time repeats daily at the same time every day.
     Daily,
 
-    /// The span of time repeats weekly on the specificed weekdays.
-    Weekly(HashSet<chrono::Weekday>),
+    /// The span of time repeats weekly.
+    Weekly,
 }

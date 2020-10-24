@@ -2,6 +2,8 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::io;
 
+pub type SparrowResult<T> = Result<T, SparrowError>;
+
 #[derive(Debug)]
 pub enum SparrowError {
     InputCanceled,

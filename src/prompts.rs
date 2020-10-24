@@ -49,3 +49,49 @@ fn get_input() -> Result<String, SparrowError> {
     stdin().read_line(&mut s)?;
     Ok(s)
 }
+
+/// a fancy bool. deal with it
+pub enum Decision {
+    Yes,
+    No,
+}
+
+impl Decision {
+    fn is_yes(&self) -> bool {
+        match self {
+            Decision::Yes => true,
+            _ => false,
+        }
+    }
+
+    #[allow(dead_code)]
+    fn is_no(&self) -> bool {
+        match self {
+            Decision::No => true,
+            _ => false,
+        }
+    }
+}
+
+pub fn prompt_yn(prompt_string: &str) -> Result<Option<Decision>, SparrowError> {
+    loop {
+        let mut s = String::new();
+
+        print!("{}  ", prompt_string);
+        stdout().flush()?;
+        stdin().read_line(&mut s)?;
+        s = s.trim().to_string();
+
+        s = s.trim().to_lowercase();
+
+        if s.is_empty() {
+            break Ok(None);
+        } else if s.starts_with('y') {
+            break Ok(Some(Decision::Yes));
+        } else if s.starts_with('n') {
+            break Ok(Some(Decision::No));
+        } else {
+            print!("(What?)  ");
+        }
+    }
+}

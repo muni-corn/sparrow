@@ -1,5 +1,4 @@
 use ansi_term::Style;
-use std::io::{stdin, stdout, Write};
 
 pub mod data;
 pub mod errors;

@@ -1,5 +1,5 @@
 use crate::errors::SparrowError;
-use crate::{prompt_yn, Decision, Formatting};
+use crate::Formatting;
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::io::{stdin, stdout, Write};

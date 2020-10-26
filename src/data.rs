@@ -6,6 +6,12 @@ use std::path::Path;
 
 #[derive(Deserialize, Serialize)]
 pub struct Config {
+    /// Date format used when parsing/formatting dates.
+    pub date_format: String,
+
+    /// Time format used when parsing/formatting time.
+    pub time_format: String,
+
     /// How long a work period should last.
     pub work_minutes: u32,
 
@@ -28,6 +34,8 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            date_format: "%Y/%m/%d".to_string(),
+            time_format: "%H:%M".to_string(),
             work_minutes: 25,
             short_break_minutes: 5,
             long_break_minutes: 15,

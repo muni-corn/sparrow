@@ -1,13 +1,45 @@
+use crate::Config;
+use crate::Formatting;
+use crate::SparrowError;
+use crate::errors::SparrowResult;
 use crate::schedule::ScheduleEntry;
+use crate::prompts::*;
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
 
+/// A CalendarEvent that can optionally be repeated. TODO: Make this an enum instead of containing
+/// an enum type like CalendarEventType.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CalendarEvent {
     pub name: String,
     pub time_span: TimeSpan,
     pub event_type: CalendarEventType,
     pub repeat: Repeat,
+}
+
+impl CalendarEvent {
+    pub fn prompt_event(formatting: &Formatting, config: &Config) -> SparrowResult<Self> {
+        let name = prompt(&formatting, "What should this event be called?", None)?;
+        let span = TimeSpan::prompt(&formatting, "When?", &config.date_format, &config.time_format)?;
+        let repeat = Repeat::prompt(&formatting)?;
+        Ok(Self {
+            name,
+            time_span: span,
+            event_type: CalendarEventType::Event,
+            repeat,
+        })
+    }
+
+    pub fn prompt_break(formatting: &Formatting, config: &Config) -> SparrowResult<Self> {
+        let span = TimeSpan::prompt(&formatting, "When?", &config.date_format, &config.time_format)?;
+        let repeat = Repeat::prompt(&formatting)?;
+        Ok(Self {
+            name: String::new(),
+            time_span: span,
+            event_type: CalendarEventType::Break,
+            repeat,
+        })
+    }
 }
 
 impl IntoIterator for CalendarEvent {
@@ -31,7 +63,7 @@ impl IntoIterator for CalendarEvent {
     }
 }
 
-/// Produces `ScheduleEntry`s from repeated `CalendarEvent`s
+/// Produces `ScheduleEntry`s from repeated `CalendarEvent`s.
 pub struct CalendarScheduleEntryIter {
     calendar_event: CalendarEvent,
     next: Option<ScheduleEntry>,
@@ -75,7 +107,7 @@ pub enum CalendarEventType {
     Event,
 }
 
-/// A single block of time. Multiple, repeated blocks of time are covered by `Occupancy`.
+/// A single block of time.
 #[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 pub struct TimeSpan {
     start: DateTime<Local>,
@@ -85,6 +117,26 @@ pub struct TimeSpan {
 impl TimeSpan {
     pub fn new(start: DateTime<Local>, minutes: u32) -> Self {
         Self { start, minutes }
+    }
+
+    pub fn prompt(formatting: &Formatting, question: &str, date_format: &str, time_format: &str) -> SparrowResult<Self> {
+        let initial_question = format!("{}\nDay?", question);
+        let date = prompt_strict(&formatting, &initial_question, Some(date_format), |i| {
+            NaiveDate::parse_from_str(i, date_format)
+        })?;
+        let time = prompt_strict(&formatting, "Time?", Some(time_format), |i| {
+            NaiveTime::parse_from_str(i, time_format)
+        })?;
+
+        let start = Local.from_local_datetime(&date.and_time(time)).earliest().unwrap();
+
+        let minutes = prompt_strict(&formatting, "How long?", Some("minutes"), |i| {
+            i.parse::<u32>()
+        })?;
+
+        Ok(Self {
+            start, minutes
+        })
     }
 
     pub fn beginning(&self) -> &DateTime<Local> {
@@ -163,4 +215,21 @@ pub enum Repeat {
 
     /// The span of time repeats weekly.
     Weekly,
+}
+
+impl Repeat {
+    pub fn prompt(formatting: &Formatting) -> SparrowResult<Self> {
+        prompt_strict(formatting, "Repeat?", Some("[N]o, [d]aily, [w]eekly"), |i| {
+            let i = i.trim().to_lowercase();
+            if i.is_empty() || "no".starts_with(&i) {
+                Ok(Self::No)
+            } else if "daily".starts_with(&i) {
+                Ok(Self::Daily)
+            } else if "weekly".starts_with(&i) {
+                Ok(Self::Weekly)
+            } else {
+                Err(SparrowError::BasicMessage(String::from("What?")))
+            }
+        })
+    }
 }

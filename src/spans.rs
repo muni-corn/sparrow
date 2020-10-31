@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 /// A CalendarEvent that can optionally be repeated. TODO: Make this an enum instead of containing
 /// an enum type like CalendarEventType.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct CalendarEvent {
     pub name: String,
     pub time_span: TimeSpan,
@@ -101,7 +101,7 @@ impl Iterator for CalendarScheduleEntryIter {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum CalendarEventType {
     Break,
     Event,
@@ -122,16 +122,16 @@ impl TimeSpan {
     pub fn prompt(formatting: &Formatting, question: &str, date_format: &str, time_format: &str) -> SparrowResult<Self> {
         let initial_question = format!("{}\nDay?", question);
         let date = prompt_strict(&formatting, &initial_question, Some(date_format), |i| {
-            NaiveDate::parse_from_str(i, date_format)
+            NaiveDate::parse_from_str(i.trim(), date_format)
         })?;
         let time = prompt_strict(&formatting, "Time?", Some(time_format), |i| {
-            NaiveTime::parse_from_str(i, time_format)
+            NaiveTime::parse_from_str(i.trim(), time_format)
         })?;
 
         let start = Local.from_local_datetime(&date.and_time(time)).earliest().unwrap();
 
         let minutes = prompt_strict(&formatting, "How long?", Some("minutes"), |i| {
-            i.parse::<u32>()
+            i.trim().parse::<u32>()
         })?;
 
         Ok(Self {
@@ -205,7 +205,7 @@ impl TimeSpan {
 }
 
 /// How to repeat a span of time.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Repeat {
     /// The span of time only occurs once.
     No,

@@ -40,14 +40,9 @@ impl CalendarEvent {
             repeat,
         })
     }
-}
 
-impl IntoIterator for CalendarEvent {
-    type Item = ScheduleEntry;
-
-    type IntoIter = CalendarScheduleEntryIter;
-
-    fn into_iter(self) -> Self::IntoIter {
+    /// Returns an iterator that returns `ScheduleEntry`s.
+    pub fn iter(&self) -> CalendarScheduleEntryIter {
         let initial_item = match self.event_type {
             CalendarEventType::Event => ScheduleEntry::Calendar {
                 name: self.name.clone(),
@@ -56,7 +51,7 @@ impl IntoIterator for CalendarEvent {
             CalendarEventType::Break => ScheduleEntry::Break(self.time_span),
         };
 
-        Self::IntoIter {
+        CalendarScheduleEntryIter {
             calendar_event: self,
             next: Some(initial_item),
         }
@@ -64,17 +59,21 @@ impl IntoIterator for CalendarEvent {
 }
 
 /// Produces `ScheduleEntry`s from repeated `CalendarEvent`s.
-pub struct CalendarScheduleEntryIter {
-    calendar_event: CalendarEvent,
+pub struct CalendarScheduleEntryIter<'a> {
+    calendar_event: &'a CalendarEvent,
     next: Option<ScheduleEntry>,
 }
 
-impl Iterator for CalendarScheduleEntryIter {
+impl<'a> CalendarScheduleEntryIter<'a> {
+    pub fn new(calendar_event: &'a CalendarEvent, next: Option<ScheduleEntry>) -> Self { Self { calendar_event, next } }
+}
+
+impl Iterator for CalendarScheduleEntryIter<'_> {
     type Item = ScheduleEntry;
 
     fn next(&mut self) -> Option<Self::Item> {
         // do not mutate. this is what is returned at the end of the function. self.next is
-        // modified here to determine what entry there will be (if any) after this one.j
+        // modified here to determine what entry there will be (if any) after this one.
         let result = self.next.clone();
 
         self.next = if let Some(current_entry) = &self.next {
@@ -231,5 +230,52 @@ impl Repeat {
                 Err(SparrowError::BasicMessage(String::from("What?")))
             }
         })
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct Bedtime {
+    start: NaiveTime,
+    hours: f32,
+}
+
+impl Bedtime {
+    pub fn new(start: NaiveTime, hours: f32) -> Self { Self { start, hours } }
+
+    pub fn iter(&self) -> BedtimeScheduleEntryIter {
+        BedtimeScheduleEntryIter::new(self)
+    }
+}
+
+impl Default for Bedtime {
+    fn default() -> Self {
+        Self {
+            start: NaiveTime::from_hms(20, 0, 0),
+            hours: 10.0,
+        }
+    }
+}
+
+pub struct BedtimeScheduleEntryIter {
+    current: TimeSpan
+}
+
+impl BedtimeScheduleEntryIter {
+    pub fn new(bedtime: &Bedtime) -> Self {
+        Self {
+            current: TimeSpan::new(Local::today().and_time(bedtime.start).unwrap(), (bedtime.hours * 60.0) as u32)
+        }
+    }
+}
+
+impl Iterator for BedtimeScheduleEntryIter {
+    type Item = ScheduleEntry;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let ret = ScheduleEntry::Sleep(self.current);
+
+        self.current.start = self.current.start + chrono::Duration::days(1);
+
+        Some(ret)
     }
 }

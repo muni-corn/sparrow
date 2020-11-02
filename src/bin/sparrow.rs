@@ -1,7 +1,35 @@
 use ansi_term::{Color, Style};
 use clap::{App, Arg, SubCommand};
-use sparrow::{Formatting, Schedule, Task, UserData};
+use sparrow::CalendarEvent;
+use sparrow::{prompts::*, Formatting, Schedule, SparrowError, Task, UserData};
+use std::convert::TryFrom;
 use std::path::PathBuf;
+
+enum AddType {
+    Task,
+    Break,
+    Event,
+}
+
+impl TryFrom<&str> for AddType {
+    type Error = SparrowError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let value = value.to_lowercase();
+        if "task".starts_with(&value) {
+            Ok(Self::Task)
+        } else if "break".starts_with(&value) {
+            Ok(Self::Break)
+        } else if "event".starts_with(&value) {
+            Ok(Self::Event)
+        } else {
+            Err(SparrowError::BasicMessage(format!(
+                "'{}' isn't something you can add",
+                value
+            )))
+        }
+    }
+}
 
 fn main() {
     let mut app = App::new("sparrow")
@@ -28,7 +56,7 @@ fn main() {
 
     if std::env::args().count() <= 1 {
         app.print_help().unwrap();
-        return
+        return;
     }
 
     let clap_matches = app.get_matches();
@@ -48,36 +76,66 @@ fn main() {
     let mut data = UserData::from_file(&data_file_path).unwrap();
 
     if let Some(add_matches) = clap_matches.subcommand_matches("add") {
-        if let Some(ty) = add_matches.value_of("type") {
-            match ty {
-                
-            }
-        }
-        add_task(&formatting, &mut data);
-    } else if let Some(delete_matches) = clap_matches.subcommand_matches("delete") {
+        let add_type = if let Some(ty_str) = add_matches.value_of("type") {
+            AddType::try_from(ty_str).unwrap()
+        } else {
+            prompt_add_type(&formatting)
+        };
+        add(&formatting, &mut data, add_type)
+    } else if let Some(_delete_matches) = clap_matches.subcommand_matches("delete") {
         todo!()
-    } else if let Some(check_matches) = clap_matches.subcommand_matches("check") {
+    } else if let Some(_check_matches) = clap_matches.subcommand_matches("check") {
         todo!()
-    } else if let Some(set_sleep_matches) = clap_matches.subcommand_matches("set-sleep") {
+    } else if let Some(_set_sleep_matches) = clap_matches.subcommand_matches("set-sleep") {
         todo!()
-    } else if let Some(make_matches) = clap_matches.subcommand_matches("make") {
-        make_schedule(&formatting, &mut data)
-    } else if let Some(show_matches) = clap_matches.subcommand_matches("show") {
-        data.get_schedule().print();
+    } else if let Some(_make_matches) = clap_matches.subcommand_matches("make") {
+        make_schedule(&mut data)
+    } else if let Some(_show_matches) = clap_matches.subcommand_matches("show") {
+        data.get_schedule().print(data.get_config());
     }
 
     data.write_to_file(data_file_path).unwrap();
 }
 
-fn add_task(formatting: &Formatting, data: &mut UserData) {
-    let new_task = Task::prompt_new(&formatting).unwrap();
-    data.add_task(new_task);
+fn add(formatting: &Formatting, data: &mut UserData, add_type: AddType) {
+    match add_type {
+        AddType::Task => {
+            let new_task = Task::prompt_new(&formatting, &data.get_config()).unwrap();
+            data.add_task(new_task);
+        }
+        AddType::Break => {
+            let new_break = CalendarEvent::prompt_break(formatting, data.get_config()).unwrap();
+            data.add_event(new_break);
+        }
+        AddType::Event => {
+            let new_event = CalendarEvent::prompt_event(formatting, data.get_config()).unwrap();
+            data.add_event(new_event);
+        }
+    }
 }
 
-fn prompt_add_type() {}
+fn prompt_add_type(formatting: &Formatting) -> AddType {
+    prompt_strict(
+        &formatting,
+        "What do you want to add?",
+        Some("[T]ask, [b]reak, [e]vent"),
+        |i| {
+            let i = i.trim();
+            if i.is_empty() {
+                Ok(AddType::Task)
+            } else {
+                AddType::try_from(i).map_err(|_| {
+                    SparrowError::BasicMessage("Enter 'type', 'break', or 'event'".to_string())
+                })
+            }
+        },
+    )
+    .unwrap()
+}
 
-fn make_schedule(formatting: &Formatting, data: &mut UserData) {
+fn make_schedule(data: &mut UserData) {
     data.set_schedule(
-        Schedule::make(data.get_config(), data.get_tasks(), data.get_events()).unwrap(),
+        Schedule::make(data.get_config(), data.get_tasks(), data.get_events(), data.get_bedtime()).unwrap(),
     );
+    println!("Done!");
 }

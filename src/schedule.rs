@@ -1,9 +1,10 @@
-use crate::Bedtime;
+use crate::errors::SparrowResult;
 use crate::task::{Task, TaskDuration};
+use crate::Bedtime;
+use crate::CalendarEvent;
 use crate::Config;
 use crate::SparrowError;
 use crate::TimeSpan;
-use crate::CalendarEvent;
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -32,9 +33,12 @@ impl Schedule {
             // entries should stay sorted
             sort_entries(&mut entries);
 
+            #[cfg(debug_assertions)]
+            dbg!(&entries);
+
             let mut result = Self { entries };
 
-            result.fill_free_time(config, &tasks);
+            result.fill_free_time(config, &tasks, last_due_date);
 
             // make sure entries are sorted correctly
             result.entries.sort_by_cached_key(|e| *e.span().beginning());
@@ -47,50 +51,25 @@ impl Schedule {
         }
     }
 
-    fn fill_free_time(&mut self, config: &Config, tasks: &[Task]) {
+    fn fill_free_time(&mut self, config: &Config, tasks: &[Task], until: DateTime<Local>) {
         if tasks.is_empty() {
             return;
         }
 
         let mut periods_left = Self::unscheduled_periods_from_tasks(config, tasks);
-        let mut free_spans = self.get_free_times(&config);
+        let mut open_sessions = self.get_open_work_sessions(&config, until);
 
-        'free_spans: for free_span in free_spans.iter_mut() {
-            if free_span.minutes() < config.work_minutes {
-                // no free time left to schedule here, continue
-                continue 'free_spans;
-            }
+        #[cfg(debug_assertions)]
+        dbg!(&open_sessions);
 
-            let mut periods_left_before_big_break = config.work_periods_per_job_session;
-            'periods: for periods in periods_left.iter_mut() {
-                while periods.periods_left > 0 {
-                    if periods_left_before_big_break > 0 {
-                        // add a job session, if the task should be considered
-                        let t = periods.task;
-                        if *free_span.beginning()
-                            >= t.due_date
-                                - chrono::Duration::days(t.consideration_period_days as i64)
-                        {
-                            self.add_job_and_break(periods, free_span, config);
-
-                            // decrement this thing
-                            periods_left_before_big_break -= 1;
-                        } else {
-                            // task is not considered yet at this point in time, so move on
-                            continue 'periods;
-                        }
-                    } else {
-                        // add a bigger break
-                        self.add_long_break(free_span, config);
-
-                        // reset the big-break counter
-                        periods_left_before_big_break = config.work_periods_per_job_session;
-
-                        // should we continue adding jobs from this task after this session? if
-                        // not, move onto the next task
-                        if !config.allow_repeats {
-                            continue 'periods;
-                        }
+        'sessions: for open_session in open_sessions.iter_mut() {
+            for unscheduled in periods_left.iter_mut() {
+                if open_session.full() {
+                    continue 'sessions;
+                } else {
+                    while unscheduled.periods_left > 0 && !open_session.full() {
+                        open_session.add_job(&unscheduled.name).unwrap();
+                        unscheduled.periods_left -= 1;
                     }
                 }
             }
@@ -112,51 +91,14 @@ impl Schedule {
                 )
             }
         }
-    }
 
-    fn add_long_break(&mut self, free_time_span: &mut TimeSpan, config: &Config) {
-        // add a big break. `actual_length` prevents overlap
-        let actual_length = config.long_break_minutes.min(free_time_span.minutes());
-
-        self.entries.push(ScheduleEntry::Break(TimeSpan::new(
-            *free_time_span.beginning(),
-            actual_length,
-        )));
-
-        // be sure to shorten free_time_span
-        free_time_span.advance_and_shorten(config.long_break_minutes.min(free_time_span.minutes()));
-    }
-
-    fn add_job_and_break(
-        &mut self,
-        current_task: &mut UnscheduledPeriod,
-        free_time_span: &mut TimeSpan,
-        config: &Config,
-    ) {
-        if free_time_span.minutes() < config.work_minutes || current_task.periods_left == 0 {
-            return;
-        }
-
-        // add a work period and then a short break
-        self.entries.push(ScheduleEntry::Job {
-            title: current_task.name.clone(),
-            span: TimeSpan::new(*free_time_span.beginning(), config.work_minutes),
-        });
-
-        current_task.periods_left -= 1;
-
-        // advance free_time_span before adding short break
-        free_time_span.advance_and_shorten(config.work_minutes);
-
-        // add the short break, if space still allows
-        if free_time_span.minutes() > 0 {
-            self.entries.push(ScheduleEntry::Break(TimeSpan::new(
-                *free_time_span.beginning(),
-                config.short_break_minutes,
-            )));
-
-            // and advance again
-            free_time_span.advance_and_shorten(config.short_break_minutes);
+        for work_session in open_sessions {
+            let long_break = ScheduleEntry::Break(TimeSpan::new(
+                work_session.ending(),
+                config.long_break_minutes,
+            ));
+            self.entries.append(&mut work_session.into());
+            self.entries.push(long_break);
         }
     }
 
@@ -179,7 +121,7 @@ impl Schedule {
                     for s in subs {
                         v.push(UnscheduledPeriod {
                             task: t,
-                            name: s.name.clone(),
+                            name: format!("{}: {}", t.name, s.name),
                             periods_left: (s.duration as f64 / config.work_minutes as f64).ceil()
                                 as u32,
                         });
@@ -191,28 +133,46 @@ impl Schedule {
         v
     }
 
-    fn get_free_times(&self, config: &Config) -> Vec<TimeSpan> {
-        // iterate over pairs of (time_span, next_time_span) to determine spans of free time. if
-        // the two spans overlap, there's obviously no free time. otherwise, free time is
-        // calculated by next_time_span.beginning() - time_span.end()
-        self.entries
-            .iter()
-            .zip(self.entries.iter().skip(1))
-            .filter_map(|pair| {
-                let earlier_span = pair.0.span();
-                let later_span = pair.1.span();
+    fn get_open_work_sessions(&self, config: &Config, until: DateTime<Local>) -> Vec<WorkSession> {
+        use std::iter::once;
 
-                if earlier_span.touches(later_span) {
-                    None
-                } else if let Some(span) = TimeSpan::time_between(earlier_span, later_span) {
-                    if span.minutes() < config.work_minutes {
-                        None
-                    } else {
-                        Some(span)
+        let now = Local::now();
+        let filtered_entries = self
+            .entries
+            .iter()
+            .skip_while(|e| e.span().end() <= now)
+            .take_while(|e| *e.span().beginning() < until);
+        let span_beginnings = filtered_entries
+            .clone()
+            .map(|e| *e.span().beginning())
+            .chain(once(until));
+        let span_endings = once(now).chain(filtered_entries.clone().map(|e| e.span().end()));
+
+        let work_session_len = WorkSession::len_minutes(config) as i64;
+        span_endings
+            .zip(span_beginnings)
+            .flat_map(|pair| {
+
+                #[cfg(debug_assertions)]
+                dbg!(&pair);
+
+                let mut v = Vec::new();
+                let end = pair.0;
+                let beginning_next = pair.1;
+
+                if beginning_next > end {
+                    let free_minutes = (beginning_next - end).num_minutes();
+                    let num_possible_work_sessions = free_minutes / work_session_len;
+
+                    for i in 0..num_possible_work_sessions {
+                        v.push(WorkSession::new(
+                            end + chrono::Duration::minutes(i * work_session_len),
+                            config,
+                        ));
                     }
-                } else {
-                    None
                 }
+
+                v
             })
             .collect()
     }
@@ -239,14 +199,112 @@ impl Schedule {
     }
 
     pub fn print(&self, config: &Config) {
-        for e in self.entries.iter().filter(|e| *e.span().beginning() >= Local::now()) {
+        for e in self
+            .entries
+            .iter()
+            .filter(|e| *e.span().beginning() >= Local::now())
+        {
             let format = format!("{} {}", config.date_format, config.time_format);
             println!("{} :: {}", e.span().beginning().format(&format), e.title());
         }
     }
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Debug)]
+struct WorkSession {
+    start: DateTime<Local>,
+    job_names: Vec<String>,
+
+    max_jobs: usize,
+    job_len_minutes: u32,
+    break_len_minutes: u32,
+}
+
+impl WorkSession {
+    fn len_minutes(config: &Config) -> u32 {
+        config.work_periods_per_job_session * config.work_minutes
+            + (config.work_periods_per_job_session - 1) * config.short_break_minutes
+            + config.long_break_minutes
+    }
+
+    fn new(start: DateTime<Local>, config: &Config) -> Self {
+        Self {
+            start,
+            job_names: Vec::new(),
+            max_jobs: config.work_periods_per_job_session as usize,
+            job_len_minutes: config.work_minutes,
+            break_len_minutes: config.short_break_minutes,
+        }
+    }
+
+    fn full(&self) -> bool {
+        self.job_names.len() >= self.max_jobs
+    }
+
+    fn add_job(&mut self, name: &str) -> SparrowResult<()> {
+        if !self.full() {
+            self.job_names.push(name.to_string());
+            Ok(())
+        } else {
+            Err(SparrowError::BasicMessage(
+                "work session is full; no more jobs can be scheduled".to_string(),
+            ))
+        }
+    }
+
+    fn ending(&self) -> DateTime<Local> {
+        if self.job_names.is_empty() {
+            self.start.clone()
+        } else {
+            self.start
+                + chrono::Duration::minutes(
+                    self.job_names.len() as i64 * self.job_len_minutes as i64,
+                )
+                + chrono::Duration::minutes(
+                    (self.job_names.len() - 1) as i64 * self.break_len_minutes as i64,
+                )
+        }
+    }
+}
+
+impl Into<Vec<ScheduleEntry>> for WorkSession {
+    fn into(self) -> Vec<ScheduleEntry> {
+        if self.job_names.is_empty() {
+            vec![]
+        } else {
+            let job_break_len = self.job_len_minutes + self.break_len_minutes;
+
+            self.job_names
+                .iter()
+                .enumerate()
+                .flat_map(|pair| {
+                    let i = pair.0;
+                    let name = pair.1;
+
+                    let job = ScheduleEntry::Job {
+                        title: name.to_string(),
+                        span: TimeSpan::new(
+                            self.start + chrono::Duration::minutes(i as i64 * job_break_len as i64),
+                            self.job_len_minutes,
+                        ),
+                    };
+
+                    let break_time = ScheduleEntry::Break(TimeSpan::new(
+                        self.start
+                            + chrono::Duration::minutes(self.job_len_minutes as i64)
+                            + chrono::Duration::minutes(i as i64 * job_break_len as i64),
+                        self.job_len_minutes,
+                    ));
+
+                    vec![job, break_time]
+                })
+                .take(self.job_names.len() * 2 - 1) // this trims off that last short break we won't need
+                .collect()
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum ScheduleEntry {
     /// Work time, part of a Task.
     Job { title: String, span: TimeSpan },

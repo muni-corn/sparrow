@@ -262,8 +262,11 @@ pub struct BedtimeScheduleEntryIter {
 
 impl BedtimeScheduleEntryIter {
     pub fn new(bedtime: &Bedtime) -> Self {
+        // sleep starts on the day before, in case you're like me and decide to make a
+        // schedule in the  middle of bedtime
+        let yesterday = Local::today() - chrono::Duration::days(1);
         Self {
-            current: TimeSpan::new(Local::today().and_time(bedtime.start).unwrap(), (bedtime.hours * 60.0) as u32)
+            current: TimeSpan::new(yesterday.and_time(bedtime.start).unwrap(), (bedtime.hours * 60.0) as u32)
         }
     }
 }

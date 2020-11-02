@@ -8,7 +8,7 @@ use crate::TimeSpan;
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Clone, Default, Deserialize, Serialize)]
 pub struct Schedule {
     entries: Vec<ScheduleEntry>,
 }
@@ -207,6 +207,10 @@ impl Schedule {
             let format = format!("{} {}", config.date_format, config.time_format);
             println!("{} :: {}", e.span().beginning().format(&format), e.title());
         }
+    }
+
+    pub fn get_entries(&self) -> &[ScheduleEntry] {
+        &self.entries
     }
 }
 

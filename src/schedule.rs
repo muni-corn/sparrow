@@ -1,8 +1,10 @@
+use crate::Bedtime;
 use crate::task::{Task, TaskDuration};
 use crate::Config;
 use crate::SparrowError;
 use crate::TimeSpan;
-use crate::{CalendarEvent, CalendarEventType};
+use crate::CalendarEvent;
+use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Default, Deserialize, Serialize)]
@@ -15,6 +17,7 @@ impl Schedule {
         config: &Config,
         tasks: &[Task],
         events: &[CalendarEvent],
+        bedtime: &Bedtime,
     ) -> Result<Self, SparrowError> {
         // intentionally shadow `tasks`. we want `tasks` to be mutable (for sorting) but we don't
         // want to modify the original reference
@@ -23,63 +26,90 @@ impl Schedule {
         // make sure tasks are sorted by due date
         tasks.sort_by_cached_key(|t| t.due_date);
 
-        let mut entries = Self::events_to_schedule_entries(events);
+        if let Some(last_due_date) = tasks.last().map(|t| t.due_date) {
+            let mut entries = Self::breaks_to_schedule_entries(events, last_due_date, bedtime);
 
-        // entries should stay sorted
-        sort_entries(&mut entries);
+            // entries should stay sorted
+            sort_entries(&mut entries);
 
-        let mut result = Self { entries };
+            let mut result = Self { entries };
 
-        result.fill_free_time(config, &tasks);
+            result.fill_free_time(config, &tasks);
 
-        Ok(result)
+            // make sure entries are sorted correctly
+            result.entries.sort_by_cached_key(|e| *e.span().beginning());
+
+            Ok(result)
+        } else {
+            Err(SparrowError::BasicMessage(
+                "can't make a schedule without tasks".to_string(),
+            ))
+        }
     }
 
     fn fill_free_time(&mut self, config: &Config, tasks: &[Task]) {
+        if tasks.is_empty() {
+            return;
+        }
+
         let mut periods_left = Self::unscheduled_periods_from_tasks(config, tasks);
+        let mut free_spans = self.get_free_times(&config);
 
-        let mut free_spans = self.get_free_times(config);
+        'free_spans: for free_span in free_spans.iter_mut() {
+            if free_span.minutes() < config.work_minutes {
+                // no free time left to schedule here, continue
+                continue 'free_spans;
+            }
 
-        let mut periods_iter = periods_left.iter_mut();
-        let mut current_periods_opt = periods_iter.next();
-
-        'outer: for free_span in free_spans.iter_mut() {
             let mut periods_left_before_big_break = config.work_periods_per_job_session;
+            'periods: for periods in periods_left.iter_mut() {
+                while periods.periods_left > 0 {
+                    if periods_left_before_big_break > 0 {
+                        // add a job session, if the task should be considered
+                        let t = periods.task;
+                        if *free_span.beginning()
+                            >= t.due_date
+                                - chrono::Duration::days(t.consideration_period_days as i64)
+                        {
+                            self.add_job_and_break(periods, free_span, config);
 
-            // while this free span still has time left to fill, fill 'er up
-            'inner: while free_span.minutes() >= config.work_minutes {
-                if let Some(current_task) = &current_periods_opt {
-                    if current_task.periods_left == 0 {
-                        // no more work to schedule, so move to next task (skip decrementing work
-                        // period counter with `continue`)
-                        current_periods_opt = periods_iter.next();
-                        continue 'inner;
-                    } else if periods_left_before_big_break == 0 {
+                            // decrement this thing
+                            periods_left_before_big_break -= 1;
+                        } else {
+                            // task is not considered yet at this point in time, so move on
+                            continue 'periods;
+                        }
+                    } else {
+                        // add a bigger break
                         self.add_long_break(free_span, config);
 
-                        // TODO advance to next task if config.allow_repeats is false
-                        if !config.allow_repeats {}
-
-                        // reset the period counter
+                        // reset the big-break counter
                         periods_left_before_big_break = config.work_periods_per_job_session;
-                    } else {
-                        // add a job (if it should be considered, TODO)
-                        self.add_job_and_break(current_task, free_span, config);
-                    }
 
-                    periods_left_before_big_break -= 1;
-                } else {
-                    break 'outer;
+                        // should we continue adding jobs from this task after this session? if
+                        // not, move onto the next task
+                        if !config.allow_repeats {
+                            continue 'periods;
+                        }
+                    }
                 }
             }
+
+            periods_left.retain(|p| p.periods_left > 0);
         }
 
         periods_left.retain(|p| p.periods_left > 0);
 
         if !periods_left.is_empty() {
-            println!("WARNING: There wasn't enough free time to finish scheduling the following tasks:");
+            println!(
+                "WARNING: There wasn't enough free time to finish scheduling the following tasks:"
+            );
             for p in periods_left {
-                println!("\t{}, {} minutes unscheduled", p.name, p.periods_left * config.work_minutes)
+                println!(
+                    "\t{}, {} minutes unscheduled",
+                    p.name,
+                    p.periods_left * config.work_minutes
+                )
             }
         }
     }
@@ -99,15 +129,21 @@ impl Schedule {
 
     fn add_job_and_break(
         &mut self,
-        current_task: &UnscheduledPeriod,
+        current_task: &mut UnscheduledPeriod,
         free_time_span: &mut TimeSpan,
         config: &Config,
     ) {
+        if free_time_span.minutes() < config.work_minutes || current_task.periods_left == 0 {
+            return;
+        }
+
         // add a work period and then a short break
         self.entries.push(ScheduleEntry::Job {
             title: current_task.name.clone(),
             span: TimeSpan::new(*free_time_span.beginning(), config.work_minutes),
         });
+
+        current_task.periods_left -= 1;
 
         // advance free_time_span before adding short break
         free_time_span.advance_and_shorten(config.work_minutes);
@@ -181,21 +217,32 @@ impl Schedule {
             .collect()
     }
 
-    fn events_to_schedule_entries(events: &[CalendarEvent]) -> Vec<ScheduleEntry> {
-        events
+    fn breaks_to_schedule_entries(
+        events: &[CalendarEvent],
+        until: DateTime<Local>,
+        bedtime: &Bedtime,
+    ) -> Vec<ScheduleEntry> {
+        let mut v: Vec<ScheduleEntry> = events
             .iter()
-            .map(|e| match e.event_type {
-                CalendarEventType::Event => ScheduleEntry::Calendar {
-                    name: e.name.clone(),
-                    span: e.time_span,
-                },
-                CalendarEventType::Break => ScheduleEntry::Break(e.time_span),
+            .cloned()
+            .flat_map(|e| {
+                e.iter()
+                    .take_while(|s| *s.span().beginning() < until)
+                    .collect::<Vec<ScheduleEntry>>()
             })
-            .collect()
+            .chain(bedtime.iter().take_while(|s| *s.span().beginning() < until))
+            .collect();
+
+        v.sort_by_cached_key(|e| *e.span().beginning());
+
+        v
     }
 
-    pub fn print(&self) {
-        todo!()
+    pub fn print(&self, config: &Config) {
+        for e in self.entries.iter().filter(|e| *e.span().beginning() >= Local::now()) {
+            let format = format!("{} {}", config.date_format, config.time_format);
+            println!("{} :: {}", e.span().beginning().format(&format), e.title());
+        }
     }
 }
 
@@ -223,8 +270,18 @@ impl ScheduleEntry {
             Self::Sleep(span) => span,
         }
     }
+
+    pub fn title(&self) -> &str {
+        match self {
+            Self::Job { title, .. } => &title,
+            Self::Calendar { name, .. } => &name,
+            Self::Break(_) => "Break",
+            Self::Sleep(_) => "Sleep",
+        }
+    }
 }
 
+#[derive(Clone, Debug)]
 struct UnscheduledPeriod<'a> {
     task: &'a Task,
     name: String,

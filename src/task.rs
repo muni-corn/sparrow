@@ -1,12 +1,9 @@
 use crate::errors::SparrowError;
+use crate::prompts::*;
+use crate::Config;
 use crate::Formatting;
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::io::{stdin, stdout, Write};
-use crate::prompts::*;
-
-const DATE_FORMAT: &str = "%Y/%m/%d";
-const TIME_FORMAT: &str = "%H:%M";
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Task {
@@ -28,54 +25,25 @@ pub struct Task {
 }
 
 impl Task {
-    pub fn prompt_new(formatting: &Formatting) -> Result<Self, SparrowError> {
-        let name = {
-            let mut s = String::new();
-            print!(
-                "{}  ",
-                formatting
-                    .prompt
-                    .paint("What do you want to name this task?")
-            );
-            stdout().flush()?;
-            stdin().read_line(&mut s)?;
-            s = s.trim().to_string();
+    pub fn prompt_new(formatting: &Formatting, config: &Config) -> Result<Self, SparrowError> {
+        let name = prompt_strict(
+            formatting,
+            "What do you want to name this task?",
+            None,
+            |i| {
+                let i = i.trim();
+                if i.is_empty() {
+                    Err(SparrowError::BasicMessage(
+                        "Trust me, you don't want a task with a blank name".to_string(),
+                    ))
+                } else {
+                    Ok(i.to_string())
+                }
+            },
+        )?;
 
-            if s.is_empty() {
-                return Err(SparrowError::InputCanceled);
-            }
-
-            s
-        };
-
-        let date_str = Self::prompt_date(formatting)?;
-        let time_str_opt = Self::prompt_time(&date_str, formatting)?;
-
-        // parse date and time
-        let due_date = {
-            let time_str = if let Some(t) = time_str_opt {
-                t
-            } else {
-                chrono::NaiveTime::from_hms(0, 0, 0)
-                    .format(TIME_FORMAT)
-                    .to_string()
-            };
-            let (combined_str, combined_format) = (
-                format!("{} {}", date_str.trim(), time_str.trim()),
-                format!("{} {}", DATE_FORMAT, TIME_FORMAT),
-            );
-
-            let naive_due_date =
-                chrono::NaiveDateTime::parse_from_str(&combined_str, &combined_format)?;
-
-            if let Some(d) = Local.from_local_datetime(&naive_due_date).earliest() {
-                d
-            } else {
-                return Err(SparrowError::BasicMessage(String::from(
-                    "for some reason, the date you entered isn't valid",
-                )));
-            }
-        };
+        // determine due date from user input
+        let due_date = prompt_datetime(formatting, &config.date_format, &config.time_format, true)?;
 
         let duration = Self::prompt_task_duration(&name, formatting)?;
 
@@ -86,58 +54,6 @@ impl Task {
             done: false,
             consideration_period_days: 3,
         })
-    }
-
-    fn prompt_date(formatting: &Formatting) -> Result<String, SparrowError> {
-        let date_str = {
-            let mut s = String::new();
-            print!(
-                "{} ({})  ",
-                formatting.prompt.paint("What day is this task due?"),
-                formatting.prompt_format.paint(DATE_FORMAT)
-            );
-            stdout().flush()?;
-            stdin().read_line(&mut s)?;
-            s = s.trim().to_string();
-
-            s
-        };
-
-        Ok(date_str)
-    }
-
-    fn prompt_time(
-        date_str: &str,
-        formatting: &Formatting,
-    ) -> Result<Option<String>, SparrowError> {
-        let response = prompt_yn(&format!(
-            "{} {}",
-            formatting.prompt.paint("Add a time?"),
-            formatting.prompt_format.paint("[y/N]"),
-        ))?
-        .unwrap_or(Decision::No);
-
-        if response.is_yes() {
-            let time_str = {
-                let mut s = String::new();
-                print!(
-                    "{} ({})  ",
-                    formatting
-                        .prompt
-                        .paint(format!("What time on {} is this task due?", date_str)),
-                    formatting.prompt_format.paint(TIME_FORMAT)
-                );
-                stdout().flush()?;
-                stdin().read_line(&mut s)?;
-                s = s.trim().to_string();
-
-                s
-            };
-
-            Ok(Some(time_str))
-        } else {
-            Ok(None)
-        }
     }
 
     fn prompt_task_duration(
@@ -199,20 +115,11 @@ pub struct Subtask {
 
 impl Subtask {
     pub fn prompt_new(formatting: &Formatting) -> Result<Option<Self>, SparrowError> {
-        let name = {
-            let mut s = String::new();
-            print!(
-                "{}  ",
-                formatting
-                    .prompt
-                    .paint("What do you want to name this subtask?"),
-            );
-            stdout().flush()?;
-            stdin().read_line(&mut s)?;
-            s = s.trim().to_string();
-
-            s
-        };
+        let name = prompt(
+            formatting,
+            "What do you want to name this subtask?",
+            Some("leave blank to finish"),
+        )?;
 
         if name.trim().is_empty() {
             Ok(None)
@@ -225,10 +132,15 @@ impl Subtask {
 }
 
 fn prompt_time_duration(task_name: &str, formatting: &Formatting) -> Result<u64, SparrowError> {
-    prompt_strict(&formatting, &format!("How long will \"{}\" take to complete?", task_name), Some("minutes"), |i| {
-        match i.parse::<f64>() {
+    prompt_strict(
+        &formatting,
+        &format!("How long will \"{}\" take to complete?", task_name),
+        Some("minutes"),
+        |i| match i.trim().parse::<f64>() {
             Ok(n) => Ok(n as u64),
-            Err(_) => Err(SparrowError::BasicMessage(String::from("That doesn't seem like a number"))),
-        }
-    })
+            Err(_) => Err(SparrowError::BasicMessage(String::from(
+                "That doesn't seem like a number",
+            ))),
+        },
+    )
 }

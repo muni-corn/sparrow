@@ -1,3 +1,4 @@
+use crate::Bedtime;
 use crate::Task;
 use crate::{CalendarEvent, Schedule, SparrowError};
 use serde::{Deserialize, Serialize};
@@ -49,6 +50,7 @@ impl Default for Config {
 #[derive(Default, Deserialize, Serialize)]
 pub struct UserData {
     config: Config,
+    bedtime: Bedtime,
     tasks: Vec<Task>,
     events: Vec<CalendarEvent>,
     schedule: Schedule,
@@ -67,6 +69,10 @@ impl UserData {
         self.tasks.push(task);
     }
 
+    pub fn add_event(&mut self, event: CalendarEvent) {
+        self.events.push(event);
+    }
+
     pub fn write_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), SparrowError> {
         Ok(fs::write(path, serde_yaml::to_string(self)?)?)
     }
@@ -83,11 +89,15 @@ impl UserData {
         &self.events
     }
 
-    pub fn get_schedule(&mut self) -> &Schedule {
+    pub fn get_schedule(&self) -> &Schedule {
         &self.schedule
     }
 
     pub fn set_schedule(&mut self, schedule: Schedule) {
         self.schedule = schedule;
+    }
+
+    pub fn get_bedtime(&self) -> &Bedtime {
+        &self.bedtime
     }
 }

@@ -59,12 +59,15 @@ impl Schedule {
         let mut periods_left = Self::unscheduled_periods_from_tasks(config, tasks);
         let mut open_sessions = self.get_open_work_sessions(&config, until);
 
-        #[cfg(debug_assertions)]
-        dbg!(&open_sessions);
+        let now = Local::now();
 
         'sessions: for open_session in open_sessions.iter_mut() {
+            periods_left.retain(|p| p.periods_left > 0 && p.task.due_date > now);
+
             for unscheduled in periods_left.iter_mut() {
-                if open_session.full() {
+                if unscheduled.task.due_date <= now || unscheduled.task.done {
+                    continue;
+                } else if open_session.full() {
                     continue 'sessions;
                 } else {
                     while unscheduled.periods_left > 0 && !open_session.full() {
@@ -73,8 +76,6 @@ impl Schedule {
                     }
                 }
             }
-
-            periods_left.retain(|p| p.periods_left > 0);
         }
 
         periods_left.retain(|p| p.periods_left > 0);
@@ -202,7 +203,7 @@ impl Schedule {
         for e in self
             .entries
             .iter()
-            .filter(|e| *e.span().beginning() >= Local::now())
+            .filter(|e| e.span().end() >= Local::now())
         {
             let format = format!("{} {}", config.date_format, config.time_format);
             println!("{} :: {}", e.span().beginning().format(&format), e.title());

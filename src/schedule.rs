@@ -61,11 +61,13 @@ impl Schedule {
 
         let now = Local::now();
 
+        let should_retain = |u: &UnscheduledPeriod| u.periods_left > 0 && u.task.due_date > now && !u.task.done;
+
         'sessions: for open_session in open_sessions.iter_mut() {
-            periods_left.retain(|p| p.periods_left > 0 && p.task.due_date > now);
+            periods_left.retain(should_retain);
 
             for unscheduled in periods_left.iter_mut() {
-                if unscheduled.task.due_date <= now || unscheduled.task.done {
+                if !should_retain(unscheduled) {
                     continue;
                 } else if open_session.full() {
                     continue 'sessions;

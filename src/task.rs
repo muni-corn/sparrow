@@ -2,7 +2,6 @@ use crate::errors::SparrowError;
 use crate::prompts::*;
 use crate::Config;
 use crate::Formatting;
-use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

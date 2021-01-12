@@ -6,6 +6,7 @@ pub mod prompts;
 pub mod schedule;
 pub mod spans;
 pub mod task;
+pub mod methods;
 
 pub use data::*;
 pub use errors::SparrowError;

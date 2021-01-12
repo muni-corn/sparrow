@@ -1,6 +1,7 @@
 use crate::Bedtime;
 use crate::Task;
-use crate::{CalendarEvent, Schedule, SparrowError};
+use crate::{CalendarEvent, SparrowError};
+use crate::methods::pomodoro::PomodoroSchedule;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -53,7 +54,7 @@ pub struct UserData {
     bedtime: Bedtime,
     tasks: Vec<Task>,
     events: Vec<CalendarEvent>,
-    schedule: Schedule,
+    pomodoro_schedule: Option<PomodoroSchedule>,
 }
 
 impl UserData {
@@ -89,12 +90,16 @@ impl UserData {
         &self.events
     }
 
-    pub fn get_schedule(&self) -> &Schedule {
-        &self.schedule
+    pub fn get_pomodoro_schedule(&self) -> &Option<PomodoroSchedule> {
+        &self.pomodoro_schedule
     }
 
-    pub fn set_schedule(&mut self, schedule: Schedule) {
-        self.schedule = schedule;
+    pub fn set_pomodoro_schedule(&mut self, schedule: PomodoroSchedule) {
+        self.pomodoro_schedule = Some(schedule);
+    }
+
+    pub fn delete_pomodoro_schedule(&mut self) {
+        self.pomodoro_schedule = None;
     }
 
     pub fn get_bedtime(&self) -> &Bedtime {

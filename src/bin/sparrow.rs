@@ -91,7 +91,11 @@ fn main() {
     } else if let Some(_make_matches) = clap_matches.subcommand_matches("make") {
         make_schedule(&mut data)
     } else if let Some(_show_matches) = clap_matches.subcommand_matches("show") {
-        data.get_schedule().print(data.get_config());
+        if let Some(pomodoro) = data.get_pomodoro_schedule() {
+            println!("{}", pomodoro.display(data.get_config()))
+        } else {
+            eprintln!("no schedule here! try adding tasks with `sparrow add task` and then making a schedule with `sparrow make`")
+        }
     }
 
     data.write_to_file(data_file_path).unwrap();
@@ -134,7 +138,7 @@ fn prompt_add_type(formatting: &Formatting) -> AddType {
 }
 
 fn make_schedule(data: &mut UserData) {
-    data.set_schedule(
+    data.set_pomodoro_schedule(
         Schedule::make(data.get_config(), data.get_tasks(), data.get_events(), data.get_bedtime()).unwrap(),
     );
     println!("Done!");

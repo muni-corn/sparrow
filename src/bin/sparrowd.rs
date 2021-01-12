@@ -1,19 +1,17 @@
 //! Runs a daemon that periodically checks for the next event in the user's PomodoroSchedule, notifying
 //! them with libnotify before and once an event starts.
 
-use clap::App;
-use clap::Arg;
+use clap::{App, Arg};
 use notify::Watcher;
-use sparrow::methods::pomodoro::PomodoroScheduleEntry;
-use sparrow::methods::pomodoro::PomodoroSchedule;
-use sparrow::SparrowError;
-use sparrow::UserData;
-use std::path::PathBuf;
-use std::sync::mpsc;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::thread;
-use std::thread::JoinHandle;
+use sparrow::{
+    methods::pomodoro::{PomodoroSchedule, PomodoroScheduleEntry},
+    SparrowError, UserData,
+};
+use std::{
+    path::PathBuf,
+    sync::{mpsc, Arc, Mutex},
+    thread::{self, JoinHandle},
+};
 
 fn main() {
     // init libnotify
@@ -44,7 +42,7 @@ fn main() {
         Arc::new(Mutex::new(pomodoro.clone()))
     } else {
         eprintln!("no pomodoro schedule found! try adding tasks with `sparrow add task` and then making a schedule with `sparrow make`");
-        return
+        return;
     };
 
     // start watching!

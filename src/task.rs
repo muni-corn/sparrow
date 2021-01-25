@@ -103,7 +103,7 @@ impl Task {
 
     /// Returns true if `when` is within or after the Task's consideration period.
     pub fn is_considered(&self, when: &DateTime<Local>) -> bool {
-        (self.due_date - *when).num_days() <= self.consideration_period_days as i64
+        (self.due_date - *when).num_days() < self.consideration_period_days as i64
     }
 
     /// Returns true if `when` is on or after the Task's due date

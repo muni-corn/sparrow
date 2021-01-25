@@ -191,6 +191,10 @@ impl Bedtime {
         &self.start
     }
 
+    pub fn end(&self) -> NaiveTime {
+        self.start + chrono::Duration::minutes((self.hours * 60.0) as i64)
+    }
+
     pub fn duration_hours(&self) -> f32 {
         self.hours
     }

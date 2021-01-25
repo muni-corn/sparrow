@@ -9,7 +9,7 @@ pub mod task;
 pub mod methods;
 
 pub use data::*;
-pub use errors::SparrowError;
+pub use errors::{SparrowError, SparrowResult};
 pub use schedule::Schedule;
 pub use spans::*;
 pub use task::Task;

@@ -45,10 +45,6 @@ impl<'d> Schedule<'d> for IvyLeeSchedule {
 
         let mut day = Local::today();
 
-        dbg!(&config.skip_days);
-        dbg!(&day.weekday());
-        dbg!(&config.skip_days.contains(&day.weekday()));
-
         while day <= latest_due_date.date() {
             // if we're not to skip the day in question, we can schedule for it
             if !config.skip_days.contains(&day.weekday()) {

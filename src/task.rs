@@ -2,6 +2,8 @@ use crate::errors::SparrowError;
 use crate::prompts::*;
 use crate::Config;
 use crate::Formatting;
+use chrono::DateTime;
+use chrono::Local;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -97,6 +99,16 @@ impl Task {
                 ),
             }
         }
+    }
+
+    /// Returns true if `when` is within or after the Task's consideration period.
+    pub fn is_considered(&self, when: &DateTime<Local>) -> bool {
+        (self.due_date - *when).num_days() <= self.consideration_period_days as i64
+    }
+
+    /// Returns true if `when` is on or after the Task's due date
+    pub fn is_past_due(&self, when: &DateTime<Local>) -> bool {
+        *when >= self.due_date
     }
 }
 

@@ -2,7 +2,9 @@ use crate::Bedtime;
 use crate::Task;
 use crate::{CalendarEvent, SparrowError};
 use crate::methods::pomodoro::PomodoroSchedule;
+use chrono::Weekday;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
@@ -31,6 +33,12 @@ pub struct Config {
 
     /// How long before the next job/break starts sparrowd notifies the user.
     pub next_event_warning_minutes: u32,
+
+    /// Weekdays to skip, if any
+    pub skip_days: HashSet<Weekday>,
+
+    /// Maximum number of tasks allowed to be scheduled per day with Ivy-Lee method
+    pub ivy_lee_tasks_per_day: u32,
 }
 
 impl Default for Config {
@@ -44,6 +52,8 @@ impl Default for Config {
             work_periods_per_job_session: 4,
             allow_repeats: false,
             next_event_warning_minutes: 5,
+            skip_days: HashSet::new(),
+            ivy_lee_tasks_per_day: 6,
         }
     }
 }

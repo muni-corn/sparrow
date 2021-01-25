@@ -2,7 +2,6 @@ use crate::Config;
 use crate::Formatting;
 use crate::SparrowError;
 use crate::errors::SparrowResult;
-use crate::schedule::ScheduleEntry;
 use crate::prompts::*;
 use chrono::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -39,64 +38,6 @@ impl CalendarEvent {
             event_type: CalendarEventType::Break,
             repeat,
         })
-    }
-
-    /// Returns an iterator that returns `ScheduleEntry`s.
-    pub fn iter(&self) -> CalendarScheduleEntryIter {
-        let initial_item = match self.event_type {
-            CalendarEventType::Event => ScheduleEntry::Calendar {
-                name: self.name.clone(),
-                span: self.time_span,
-            },
-            CalendarEventType::Break => ScheduleEntry::Break(self.time_span),
-        };
-
-        CalendarScheduleEntryIter {
-            calendar_event: self,
-            next: Some(initial_item),
-        }
-    }
-}
-
-/// Produces `ScheduleEntry`s from repeated `CalendarEvent`s.
-pub struct CalendarScheduleEntryIter<'a> {
-    calendar_event: &'a CalendarEvent,
-    next: Option<ScheduleEntry>,
-}
-
-impl<'a> CalendarScheduleEntryIter<'a> {
-    pub fn new(calendar_event: &'a CalendarEvent, next: Option<ScheduleEntry>) -> Self { Self { calendar_event, next } }
-}
-
-impl Iterator for CalendarScheduleEntryIter<'_> {
-    type Item = ScheduleEntry;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        // do not mutate. this is what is returned at the end of the function. self.next is
-        // modified here to determine what entry there will be (if any) after this one.
-        let result = self.next.clone();
-
-        self.next = if let Some(current_entry) = &self.next {
-            let current_date = current_entry.span().beginning().date();
-            let current_time = current_entry.span().beginning().time();
-            let duration = current_entry.span().minutes();
-            let new_span = match &self.calendar_event.repeat {
-                Repeat::No => return None,
-                Repeat::Daily => TimeSpan::new(current_date.succ().and_time(current_time).unwrap(), duration),
-                Repeat::Weekly => TimeSpan::new((current_date + chrono::Duration::days(7)).and_time(current_time).unwrap(), duration)
-            };
-
-            Some(match current_entry {
-                ScheduleEntry::Job { title, .. } => ScheduleEntry::Job { title: title.clone(), span: new_span },
-                ScheduleEntry::Calendar { name, .. } => ScheduleEntry::Calendar { name: name.clone(), span: new_span },
-                ScheduleEntry::Break(_) => ScheduleEntry::Break(new_span),
-                ScheduleEntry::Sleep(_) => ScheduleEntry::Sleep(new_span),
-            })
-        } else {
-            return None
-        };
-
-        result
     }
 }
 
@@ -138,12 +79,16 @@ impl TimeSpan {
         })
     }
 
-    pub fn beginning(&self) -> &DateTime<Local> {
+    pub fn start(&self) -> &DateTime<Local> {
         &self.start
     }
 
     pub fn end(&self) -> DateTime<Local> {
         self.start + self.minutes_as_duration()
+    }
+
+    pub fn set_start(&mut self, start: DateTime<Local>) {
+        self.start = start;
     }
 
     fn minutes_as_duration(&self) -> chrono::Duration {
@@ -242,8 +187,16 @@ pub struct Bedtime {
 impl Bedtime {
     pub fn new(start: NaiveTime, hours: f32) -> Self { Self { start, hours } }
 
-    pub fn iter(&self) -> BedtimeScheduleEntryIter {
-        BedtimeScheduleEntryIter::new(self)
+    pub fn start(&self) -> &NaiveTime {
+        &self.start
+    }
+
+    pub fn end(&self) -> NaiveTime {
+        self.start + chrono::Duration::minutes((self.hours * 60.0) as i64)
+    }
+
+    pub fn duration_hours(&self) -> f32 {
+        self.hours
     }
 }
 
@@ -253,32 +206,5 @@ impl Default for Bedtime {
             start: NaiveTime::from_hms(20, 0, 0),
             hours: 10.0,
         }
-    }
-}
-
-pub struct BedtimeScheduleEntryIter {
-    current: TimeSpan
-}
-
-impl BedtimeScheduleEntryIter {
-    pub fn new(bedtime: &Bedtime) -> Self {
-        // sleep starts on the day before, in case you're like me and decide to make a
-        // schedule in the  middle of bedtime
-        let yesterday = Local::today() - chrono::Duration::days(1);
-        Self {
-            current: TimeSpan::new(yesterday.and_time(bedtime.start).unwrap(), (bedtime.hours * 60.0) as u32)
-        }
-    }
-}
-
-impl Iterator for BedtimeScheduleEntryIter {
-    type Item = ScheduleEntry;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let ret = ScheduleEntry::Sleep(self.current);
-
-        self.current.start = self.current.start + chrono::Duration::days(1);
-
-        Some(ret)
     }
 }

@@ -62,18 +62,12 @@ pub enum Decision {
 
 impl Decision {
     pub fn is_yes(&self) -> bool {
-        match self {
-            Decision::Yes => true,
-            _ => false,
-        }
+        matches!(self, Decision::Yes)
     }
 
     #[allow(dead_code)]
     pub fn is_no(&self) -> bool {
-        match self {
-            Decision::No => true,
-            _ => false,
-        }
+        matches!(self, Decision::No)
     }
 }
 

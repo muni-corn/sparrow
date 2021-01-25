@@ -1,19 +1,17 @@
-//! Runs a daemon that periodically checks for the next event in the user's Schedule, notifying
+//! Runs a daemon that periodically checks for the next event in the user's PomodoroSchedule, notifying
 //! them with libnotify before and once an event starts.
 
-use clap::App;
-use clap::Arg;
+use clap::{App, Arg};
 use notify::Watcher;
-use sparrow::schedule::ScheduleEntry;
-use sparrow::Schedule;
-use sparrow::SparrowError;
-use sparrow::UserData;
-use std::path::PathBuf;
-use std::sync::mpsc;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::thread;
-use std::thread::JoinHandle;
+use sparrow::{
+    methods::pomodoro::{PomodoroSchedule, PomodoroScheduleEntry},
+    SparrowError, UserData,
+};
+use std::{
+    path::PathBuf,
+    sync::{mpsc, Arc, Mutex},
+    thread::{self, JoinHandle},
+};
 
 fn main() {
     // init libnotify
@@ -28,7 +26,7 @@ fn main() {
                 .long("file")
                 .short("f")
                 .takes_value(true)
-                .value_name("PATH")
+                .value_name("FILE")
                 .help("Specifies a different data file"),
         );
 
@@ -40,18 +38,24 @@ fn main() {
 
     // get data
     let data = UserData::from_file(&data_file_path).unwrap();
-    let schedule_mutex = Arc::new(Mutex::new(data.get_schedule().clone()));
+    let schedule_mutex = if let Some(pomodoro) = data.get_pomodoro_schedule() {
+        Arc::new(Mutex::new(pomodoro.clone()))
+    } else {
+        eprintln!("no pomodoro schedule found! try adding tasks with `sparrow add task` and then making a schedule with `sparrow make`");
+        return;
+    };
 
+    // start watching!
     watch_file(data_file_path, schedule_mutex.clone());
 
-    let mut current_event: Option<ScheduleEntry> = None;
-    let mut next_event: Option<ScheduleEntry> = None;
+    let mut current_event: Option<PomodoroScheduleEntry> = None;
+    let mut next_event: Option<PomodoroScheduleEntry> = None;
     let mut notified_of_current_event = false;
     let mut warned_of_next_event = false;
     loop {
         let now = chrono::Local::now();
         if let (Some(current), Some(next)) = (&current_event, &next_event) {
-            if (current.span().end() < now || *next.span().beginning() <= now)
+            if (current.span().end() < now || *next.span().start() <= now)
                 || (current_event.is_none() && next_event.is_none())
             {
                 reassign_current_next_events(&schedule_mutex, &mut current_event, &mut next_event);
@@ -86,12 +90,12 @@ fn main() {
             // using else-if because I don't want a spam of two notifications at the same time, if applicable
             if let Some(next) = &next_event {
                 if now
-                    >= *next.span().beginning()
+                    >= *next.span().start()
                         - chrono::Duration::minutes(
                             data.get_config().next_event_warning_minutes as i64,
                         )
                 {
-                    let minutes_until = (*next.span().beginning() - now).num_minutes();
+                    let minutes_until = (*next.span().start() - now).num_minutes();
                     let _ = libnotify::Notification::new(
                         "Sparrow notification",
                         format!("In {} minutes: {}", minutes_until, next.title()).as_str(),
@@ -115,9 +119,9 @@ fn main() {
 }
 
 fn reassign_current_next_events(
-    schedule_mutex: &Arc<Mutex<Schedule>>,
-    current_event: &mut Option<ScheduleEntry>,
-    next_event: &mut Option<ScheduleEntry>,
+    schedule_mutex: &Arc<Mutex<PomodoroSchedule>>,
+    current_event: &mut Option<PomodoroScheduleEntry>,
+    next_event: &mut Option<PomodoroScheduleEntry>,
 ) {
     let now = chrono::Local::now();
 
@@ -137,7 +141,7 @@ fn reassign_current_next_events(
 }
 
 /// Starts a new thread which reloads the user data if it is changed
-fn watch_file(path: PathBuf, schedule_mutex: Arc<Mutex<Schedule>>) -> JoinHandle<()> {
+fn watch_file(path: PathBuf, schedule_mutex: Arc<Mutex<PomodoroSchedule>>) -> JoinHandle<()> {
     use notify::DebouncedEvent::*;
 
     thread::Builder::new()
@@ -159,7 +163,12 @@ fn watch_file(path: PathBuf, schedule_mutex: Arc<Mutex<Schedule>>) -> JoinHandle
                                 Err(poisoned) => poisoned.into_inner(),
                             };
                             *schedule = match UserData::from_file(p) {
-                                Ok(u) => u.get_schedule().clone(),
+                                Ok(u) => if let Some(pomodoro) = u.get_pomodoro_schedule() {
+                                    pomodoro.clone()
+                                } else {
+                                    eprintln!("no schedule anymore. finna quit");
+                                    break Box::new(SparrowError::BasicMessage("the schedule in sparrow's data file went missing".to_string()));
+                                },
                                 Err(e) => break Box::new(e),
                             }
                         },

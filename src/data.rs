@@ -1,7 +1,10 @@
-use crate::Bedtime;
-use crate::Task;
-use crate::{CalendarEvent, Schedule, SparrowError};
+use crate::{
+    methods::ivy_lee::IvyLeeSchedule, methods::pomodoro::PomodoroSchedule, Bedtime, CalendarEvent,
+    SparrowError, Task,
+};
+use chrono::Weekday;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
@@ -30,6 +33,12 @@ pub struct Config {
 
     /// How long before the next job/break starts sparrowd notifies the user.
     pub next_event_warning_minutes: u32,
+
+    /// Weekdays to skip, if any
+    pub skip_days: HashSet<Weekday>,
+
+    /// Maximum number of tasks allowed to be scheduled per day with Ivy-Lee method
+    pub ivy_lee_tasks_per_day: u32,
 }
 
 impl Default for Config {
@@ -43,6 +52,8 @@ impl Default for Config {
             work_periods_per_job_session: 4,
             allow_repeats: false,
             next_event_warning_minutes: 5,
+            skip_days: HashSet::new(),
+            ivy_lee_tasks_per_day: 6,
         }
     }
 }
@@ -53,7 +64,8 @@ pub struct UserData {
     bedtime: Bedtime,
     tasks: Vec<Task>,
     events: Vec<CalendarEvent>,
-    schedule: Schedule,
+    pomodoro_schedule: Option<PomodoroSchedule>,
+    ivy_lee_schedule: Option<IvyLeeSchedule>,
 }
 
 impl UserData {
@@ -89,12 +101,24 @@ impl UserData {
         &self.events
     }
 
-    pub fn get_schedule(&self) -> &Schedule {
-        &self.schedule
+    pub fn get_pomodoro_schedule(&self) -> &Option<PomodoroSchedule> {
+        &self.pomodoro_schedule
     }
 
-    pub fn set_schedule(&mut self, schedule: Schedule) {
-        self.schedule = schedule;
+    pub fn set_pomodoro_schedule(&mut self, schedule: PomodoroSchedule) {
+        self.pomodoro_schedule = Some(schedule);
+    }
+
+    pub fn get_ivy_lee_schedule(&self) -> &Option<IvyLeeSchedule> {
+        &self.ivy_lee_schedule
+    }
+
+    pub fn set_ivy_lee_schedule(&mut self, schedule: IvyLeeSchedule) {
+        self.ivy_lee_schedule = Some(schedule);
+    }
+
+    pub fn delete_pomodoro_schedule(&mut self) {
+        self.pomodoro_schedule = None;
     }
 
     pub fn get_bedtime(&self) -> &Bedtime {

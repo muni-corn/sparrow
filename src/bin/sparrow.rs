@@ -1,7 +1,9 @@
 use ansi_term::{Color, Style};
 use clap::{App, Arg, SubCommand};
-use sparrow::CalendarEvent;
-use sparrow::{prompts::*, Formatting, Schedule, SparrowError, Task, UserData};
+use sparrow::{
+    methods::ivy_lee::IvyLeeSchedule, prompts::*, CalendarEvent, Formatting, Schedule,
+    SparrowError, Task, UserData,
+};
 use std::convert::TryFrom;
 use std::path::PathBuf;
 
@@ -31,6 +33,29 @@ impl TryFrom<&str> for AddType {
     }
 }
 
+enum ScheduleType {
+    Pomodoro,
+    IvyLee,
+}
+
+impl TryFrom<&str> for ScheduleType {
+    type Error = SparrowError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let value = value.to_lowercase();
+        if "ivylee".starts_with(&value) || "ivy_lee".starts_with(&value) {
+            Ok(Self::IvyLee)
+        } else if "pomodoro".starts_with(&value) {
+            Ok(Self::Pomodoro)
+        } else {
+            Err(SparrowError::BasicMessage(format!(
+                "'{}' isn't a supported type of schedule",
+                value
+            )))
+        }
+    }
+}
+
 fn main() {
     let mut app = App::new("sparrow")
         .version("0.0.0")
@@ -51,8 +76,16 @@ fn main() {
         .subcommand(SubCommand::with_name("delete").about("Remove a task, event, or break"))
         .subcommand(SubCommand::with_name("check").about("Check off tasks past their due date"))
         .subcommand(SubCommand::with_name("set-sleep").about("Set your sleep schedule"))
-        .subcommand(SubCommand::with_name("make").about("Create your schedule"))
-        .subcommand(SubCommand::with_name("show").about("View your schedule"));
+        .subcommand(
+            SubCommand::with_name("make")
+                .about("Create your schedule")
+                .arg(Arg::with_name("method").help("`pomodoro` or `ivylee`")),
+        )
+        .subcommand(
+            SubCommand::with_name("show")
+                .about("View your schedule")
+                .arg(Arg::with_name("method").help("`pomodoro` or `ivylee`")),
+        );
 
     if std::env::args().count() <= 1 {
         app.print_help().unwrap();
@@ -88,13 +121,25 @@ fn main() {
         todo!()
     } else if let Some(_set_sleep_matches) = clap_matches.subcommand_matches("set-sleep") {
         todo!()
-    } else if let Some(_make_matches) = clap_matches.subcommand_matches("make") {
-        make_schedule(&mut data)
-    } else if let Some(_show_matches) = clap_matches.subcommand_matches("show") {
-        if let Some(pomodoro) = data.get_pomodoro_schedule() {
-            println!("{}", pomodoro.display(data.get_config()))
+    } else if let Some(make_matches) = clap_matches.subcommand_matches("make") {
+        let schedule_method = if let Some(method_str) = make_matches.value_of("method") {
+            ScheduleType::try_from(method_str).unwrap()
         } else {
-            eprintln!("no schedule here! try adding tasks with `sparrow add task` and then making a schedule with `sparrow make`")
+            prompt_schedule_type(&formatting)
+        };
+        match schedule_method {
+            ScheduleType::IvyLee => make_ivy_lee_schedule(&mut data),
+            ScheduleType::Pomodoro => make_pomodoro_schedule(&mut data),
+        }
+    } else if let Some(show_matches) = clap_matches.subcommand_matches("show") {
+        let schedule_method = if let Some(method_str) = show_matches.value_of("method") {
+            ScheduleType::try_from(method_str).unwrap()
+        } else {
+            prompt_schedule_type(&formatting)
+        };
+        match schedule_method {
+            ScheduleType::IvyLee => show_ivy_lee_schedule(&data),
+            ScheduleType::Pomodoro => show_pomodoro_schedule(&data),
         }
     }
 
@@ -137,9 +182,57 @@ fn prompt_add_type(formatting: &Formatting) -> AddType {
     .unwrap()
 }
 
-fn make_schedule(data: &mut UserData) {
+fn prompt_schedule_type(formatting: &Formatting) -> ScheduleType {
+    prompt_strict(
+        &formatting,
+        "What kind of schedule?",
+        Some("[p]omodoro, [i]vylee"),
+        |i| {
+            ScheduleType::try_from(i.trim())
+                .map_err(|_| SparrowError::BasicMessage("Enter 'pomodoro' or 'ivylee'".to_string()))
+        },
+    )
+    .unwrap()
+}
+
+fn make_pomodoro_schedule(data: &mut UserData) {
     data.set_pomodoro_schedule(
-        Schedule::make(data.get_config(), data.get_tasks(), data.get_events(), data.get_bedtime()).unwrap(),
+        Schedule::make(
+            data.get_config(),
+            data.get_tasks(),
+            data.get_events(),
+            data.get_bedtime(),
+        )
+        .unwrap(),
     );
     println!("Done!");
+}
+
+fn make_ivy_lee_schedule(data: &mut UserData) {
+    data.set_ivy_lee_schedule(
+        IvyLeeSchedule::make(
+            data.get_config(),
+            data.get_tasks(),
+            data.get_events(),
+            data.get_bedtime(),
+        )
+        .unwrap(),
+    );
+    println!("Done!");
+}
+
+fn show_pomodoro_schedule(data: &UserData) {
+    if let Some(pomodoro) = data.get_pomodoro_schedule() {
+        println!("{}", pomodoro.display(data.get_config()))
+    } else {
+        eprintln!("no schedule here! try adding tasks with `sparrow add task` and then making a schedule with `sparrow make pomodoro`")
+    }
+}
+
+fn show_ivy_lee_schedule(data: &UserData) {
+    if let Some(ivy_lee) = data.get_ivy_lee_schedule() {
+        println!("{}", ivy_lee.display(data.get_config()))
+    } else {
+        eprintln!("no schedule here! try adding tasks with `sparrow add task` and then making a schedule with `sparrow make ivylee`")
+    }
 }

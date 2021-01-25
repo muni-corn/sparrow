@@ -1,7 +1,7 @@
-use crate::Bedtime;
-use crate::Task;
-use crate::{CalendarEvent, SparrowError};
-use crate::methods::pomodoro::PomodoroSchedule;
+use crate::{
+    methods::ivy_lee::IvyLeeSchedule, methods::pomodoro::PomodoroSchedule, Bedtime, CalendarEvent,
+    SparrowError, Task,
+};
 use chrono::Weekday;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -65,6 +65,7 @@ pub struct UserData {
     tasks: Vec<Task>,
     events: Vec<CalendarEvent>,
     pomodoro_schedule: Option<PomodoroSchedule>,
+    ivy_lee_schedule: Option<IvyLeeSchedule>,
 }
 
 impl UserData {
@@ -106,6 +107,14 @@ impl UserData {
 
     pub fn set_pomodoro_schedule(&mut self, schedule: PomodoroSchedule) {
         self.pomodoro_schedule = Some(schedule);
+    }
+
+    pub fn get_ivy_lee_schedule(&self) -> &Option<IvyLeeSchedule> {
+        &self.ivy_lee_schedule
+    }
+
+    pub fn set_ivy_lee_schedule(&mut self, schedule: IvyLeeSchedule) {
+        self.ivy_lee_schedule = Some(schedule);
     }
 
     pub fn delete_pomodoro_schedule(&mut self) {

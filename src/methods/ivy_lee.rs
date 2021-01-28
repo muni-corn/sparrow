@@ -75,7 +75,8 @@ impl<'d> Schedule<'d> for IvyLeeSchedule {
                                 // return false, as this task is finished and won't be done again
                                 false
                             } else {
-                                day_tasks.push(format!("1/{} of remaining {}", days_until_due, t.name));
+                                day_tasks
+                                    .push(format!("1/{} of remaining {}", days_until_due, t.name));
 
                                 // since the task was only partially complete, keep it
                                 true
@@ -100,10 +101,41 @@ impl<'d> Schedule<'d> for IvyLeeSchedule {
         // warn of any unscheduled tasks. This shouldn't happen, as tasks are almost guaranteed to
         // be finished, but we'll leave it here just in case
         if !sorted_tasks.is_empty() {
-            eprintln!("WARNING: the following tasks couldn't be scheduled completely:");
+            eprintln!("warning: the following tasks couldn't be scheduled completely:");
             for t in sorted_tasks {
                 eprintln!("\t{}", t.name)
             }
+
+            // extra line
+            eprintln!();
+        }
+
+        let overscheduled_days: Vec<String> = task_days
+            .iter()
+            .filter_map(|(date, sch)| {
+                if sch.len() > config.ivy_lee_tasks_per_day as usize {
+                    Some(format!(
+                        "{} has {} tasks scheduled",
+                        date.format(&config.date_format),
+                        sch.len()
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        if !overscheduled_days.is_empty() {
+            eprintln!("warning: the following days are over-scheduled:");
+            for d in overscheduled_days {
+                eprintln!("\t{}", d)
+            }
+            eprintln!(
+                "note: your maximum task-per-day limit is {}",
+                config.ivy_lee_tasks_per_day
+            );
+
+            // extra line
+            eprintln!();
         }
 
         Ok(Self { task_days })

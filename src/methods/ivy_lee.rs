@@ -31,9 +31,7 @@ impl<'d> Schedule<'d> for IvyLeeSchedule {
         };
 
         // get latest due due of the tasks
-        let latest_due_date = if let Some(d) =
-            sorted_tasks.last()
-        {
+        let latest_due_date = if let Some(d) = sorted_tasks.last() {
             d.due_date
         } else if tasks.is_empty() {
             return Err(SparrowError::BasicMessage(String::from(
@@ -57,26 +55,36 @@ impl<'d> Schedule<'d> for IvyLeeSchedule {
 
                 // add tasks to the day
                 let mut day_tasks = Vec::new();
-                sorted_tasks.retain(|t|  
-                    // if the task is considered at `start_of_day`, we can add it to the day if
-                    // there is room
-                    if day_tasks.len() < config.ivy_lee_tasks_per_day as usize && !t.is_past_due(&start_of_day) && t.is_considered(&start_of_day) {
+                sorted_tasks.retain(|t| {
+                    // don't schedule if the task is done
+                    if t.done {
+                        false
+                    } else {
+                        // if the task is considered at `start_of_day`, we can add it to the day if
+                        // there is room. tasks that have one day left will be scheduled regardless
+                        // of whether there is room or not
                         let days_until_due = (t.due_date - start_of_day).num_days() + 1;
-                        if days_until_due == 1 {
-                            day_tasks.push(format!("Finish {}", t.name));
+                        if days_until_due == 1
+                            || (day_tasks.len() < config.ivy_lee_tasks_per_day as usize
+                                && !t.is_past_due(&start_of_day)
+                                && t.is_considered(&start_of_day))
+                        {
+                            if days_until_due == 1 {
+                                day_tasks.push(format!("Finish {}", t.name));
 
-                            // return false, as this task is finished and won't be done again
-                            false
+                                // return false, as this task is finished and won't be done again
+                                false
+                            } else {
+                                day_tasks.push(format!("1/{} of remaining {}", days_until_due, t.name));
+
+                                // since the task was only partially complete, keep it
+                                true
+                            }
                         } else {
-                            day_tasks.push(format!("1/{} of remaining {}", days_until_due, t.name));
-
-                            // since the task was only partially complete, keep it
                             true
                         }
-                    } else {
-                        true
                     }
-                );
+                });
 
                 task_days.insert(day.naive_local(), day_tasks);
             }
@@ -89,10 +97,13 @@ impl<'d> Schedule<'d> for IvyLeeSchedule {
             }
         }
 
-        // warn of any unscheduled tasks
-        eprintln!("WARNING: the following tasks couldn't be scheduled completely:");
-        for t in sorted_tasks {
-            eprintln!("\t{}", t.name)
+        // warn of any unscheduled tasks. This shouldn't happen, as tasks are almost guaranteed to
+        // be finished, but we'll leave it here just in case
+        if !sorted_tasks.is_empty() {
+            eprintln!("WARNING: the following tasks couldn't be scheduled completely:");
+            for t in sorted_tasks {
+                eprintln!("\t{}", t.name)
+            }
         }
 
         Ok(Self { task_days })
@@ -108,7 +119,7 @@ impl<'d> Schedule<'d> for IvyLeeSchedule {
                 self.task_days.get(&d.naive_local())
             } else {
                 None
-            }
+            },
         }
     }
 }
